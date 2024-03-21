@@ -26,17 +26,51 @@ def visualize_fuzzy_sets():
     acc['NS'] = fuzz.trimf(acc.universe, [61, 95, 127])
     acc['ZE'] = fuzz.trimf(acc.universe, [95, 127, 159])
     acc['PS'] = fuzz.trimf(acc.universe, [127, 159, 191])
+    acc['PM'] = fuzz.trimf(acc.universe, [159, 191, 223])
+    acc['PL'] = fuzz.trapmf(acc.universe, [191, 223, 255, 255])
     # Define membership function for throttle (output)
     # For simplicity, let's use a triangular membership function
-    throttle['LOW'] = fuzz.trimf(throttle.universe, [0, 0, 127])
-    throttle['HIGH'] = fuzz.trimf(throttle.universe, [127, 255, 255])
-    # Visualize the membership functions
-    fig, (ax0, ax1, ax2) = plt.subplots(nrows=3, figsize=(8, 10))
-    spd['NL'].view(ax=ax0, title='Speed: Low')
-    acc['NL'].view(ax=ax1, title='Acceleration: Low')
-    throttle['LOW'].view(ax=ax2, title='Throttle: Low')
-    plt.tight_layout()
+    throttle['NL'] = fuzz.trapmf(throttle.universe, [0, 0, 31, 61])
+    throttle['NM'] = fuzz.trimf(throttle.universe, [31, 61, 95])
+    throttle['NS'] = fuzz.trimf(throttle.universe, [61, 95, 127])
+    throttle['ZE'] = fuzz.trimf(throttle.universe, [95, 127, 159])
+    throttle['PS'] = fuzz.trimf(throttle.universe, [127, 159, 191])
+    throttle['PM'] = fuzz.trimf(throttle.universe, [159, 191, 223])
+    throttle['PL'] = fuzz.trapmf(throttle.universe, [191, 223, 255, 255])
+    
+    # Visualize the membership functions for speed
+    plt.figure(figsize=(10, 6))
+    for label in spd.terms:
+        plt.plot(spd.universe, fuzz.interp_membership(spd.universe, spd[label].mf, spd.universe), label=label)
+    plt.title('Membership Functions for Speed')
+    plt.xlabel('Speed')
+    plt.ylabel('Membership')
+    plt.legend()
+    plt.grid(True)
+    
+    # Visualize the membership functions for acceleration
+    plt.figure(figsize=(10, 6))
+    for label in acc.terms:
+        plt.plot(acc.universe, fuzz.interp_membership(acc.universe, acc[label].mf, acc.universe), label=label)
+    plt.title('Membership Functions for Acceleration')
+    plt.xlabel('Acceleration')
+    plt.ylabel('Membership')
+    plt.legend()
+    plt.grid(True)
+    
+    # Visualize the membership functions for throttle
+    plt.figure(figsize=(10, 6))
+    for label in throttle.terms:
+        plt.plot(throttle.universe, fuzz.interp_membership(throttle.universe, throttle[label].mf, throttle.universe), label=label)
+    plt.title('Membership Functions for Throttle')
+    plt.xlabel('Throttle')
+    plt.ylabel('Membership')
+    plt.legend()
+    plt.grid(True)
+    
     plt.show()
+
+
 def openLeft(x,alpha,beta):
     if(x<alpha):
         return 1

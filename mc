@@ -1,3 +1,4 @@
+SQLITE DATABASE
 Activity main xml
 
 <?xml version="1.0" encoding="utf-8"?>
@@ -272,3 +273,6 @@ class Users {
         this.age = age
     }
 }
+
+SHARED PREFERENCE
+

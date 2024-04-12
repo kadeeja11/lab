@@ -134,3 +134,97 @@ mdp = MarkovDecisionProcess(num_states, num_actions, transition_probabilities, r
 optimal_values, optimal_policy = mdp.value_iteration()
 print("Optimal values:", optimal_values)
 print("Optimal policy:", optimal_policy)
+
+
+hmm with sequence
+H_table = {'A': 0.2, 'C': 0.3, 'G': 0.3, 'T': 0.2}
+L_table = {'A': 0.3, 'C': 0.2, 'G': 0.2, 'T': 0.3}
+start = {'H': 0.5, 'L': 0.5}
+H_H = 0.5
+H_L = 0.5
+L_H = 0.4
+L_L = 0.6
+seq = 'GGCACTGAA'
+H = []
+L = []
+state_sequence = []
+
+# Compute the probabilities for the first observation
+first_H = start['H'] * H_table[seq[0]]
+first_L = start['L'] * L_table[seq[0]]
+H.append(first_H)
+L.append(first_L)
+
+# Determine the initial state based on the highest probability
+if first_H > first_L:
+    state_sequence.append('H')
+else:
+    state_sequence.append('L')
+
+# Iterate over the remaining observations
+for i in range(1, len(seq)):
+    sum_H = sum_L = 0
+   
+    # Calculate the probabilities for transitioning to H
+    sum_H += H[len(H) - 1] * H_H * H_table[seq[i]]
+    sum_H += L[len(L) - 1] * L_H * H_table[seq[i]]
+    #sum_H = max(prob_H, prob_L)
+
+    # Calculate the probabilities for transitioning to L
+    sum_L += L[len(H) - 1] * L_L * L_table[seq[i]]
+    sum_L += H[len(L) - 1] * H_L * L_table[seq[i]]
+    #sum_L = max(prob_H, prob_L)
+
+    # Store the probabilities for the current observation
+    H.append(sum_H)
+    L.append(sum_L)
+
+    # Determine the state with the highest probability
+    if sum_H > sum_L:
+        state_sequence.append('H')
+    else:
+        state_sequence.append('L')
+
+# Compute the probability of the entire sequence
+prob = H[len(H) - 1] + L[len(L) - 1]
+print("Probability of the sequence:", prob)
+
+# Print the expected state sequence
+print("Expected state sequence:", "".join(state_sequence))
+
+
+mdp nand
+def expected_sum_discounted_rewards(states, rewards, transitions, discount_factor, initial_state):
+
+
+  # Initialize a dictionary to store expected rewards for each state
+  value_of_states = {state: 0 for state in states}
+
+  # Iterate for multiple steps to achieve convergence (optional)
+  for _ in range(10):  # Adjust the number of iterations as needed
+    # Update value for each state using the Bellman equation
+    for state in states:
+      expected_future_reward = 0
+      for next_state, probability in transitions[state].items():
+        # Expected future reward considering all possible next states
+        expected_future_reward += probability * (rewards[next_state] + discount_factor * value_of_states[next_state])
+      value_of_states[state] = rewards[state] + discount_factor * expected_future_reward
+
+  return value_of_states
+
+# Example usage (replace placeholders with your actual values)
+states = ["Sunny", "Windy", "Hail"]
+rewards = {"Sunny": 4, "Windy": 0, "Hail": -8}
+transitions = {
+  "Sunny": {"Sunny": 0.5, "Windy": 0.5, "Hail": 0.5},
+  "Windy": {"Sunny": 0.5, "Windy": 0.5, "Hail": 0.5},
+  "Hail": {"Sunny": 0.5, "Windy": 0.5, "Hail": 0.5},
+}
+discount_factor = 0.9
+initial_state = "Sunny"
+
+expected_rewards = expected_sum_discounted_rewards(states, rewards, transitions, discount_factor, initial_state)
+
+print(f"Expected sum of discounted rewards for each state:")
+for state, reward in expected_rewards.items():
+  print(f"\t{state}: {reward:.2f}")

@@ -1,194 +1,136 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import skfuzzy as fuzz
-from skfuzzy import control as ctrl
-speed=100
-acceleration=70
-def visualize_fuzzy_sets():
-    # Define the universe of discourse for speed and acceleration
-    speed_universe = np.arange(0, 255, 1)
-    acceleration_universe = np.arange(0, 255, 1)
-    # Create fuzzy input/output variables
-    spd = ctrl.Antecedent(speed_universe, 'speed')
-    acc = ctrl.Antecedent(acceleration_universe, 'acceleration')
-    throttle = ctrl.Consequent(speed_universe, 'throttle')
-    # Define membership functions for speed
-    spd['NL'] = fuzz.trapmf(spd.universe, [0, 0, 31, 61])
-    spd['NM'] = fuzz.trimf(spd.universe, [31, 61, 95])
-    spd['NS'] = fuzz.trimf(spd.universe, [61, 95, 127])
-    spd['ZE'] = fuzz.trimf(spd.universe, [95, 127, 159])
-    spd['PS'] = fuzz.trimf(spd.universe, [127, 159, 191])
-    spd['PM'] = fuzz.trimf(spd.universe, [159, 191, 223])
-    spd['PL'] = fuzz.trapmf(spd.universe, [191, 223, 255, 255])
-    # Define membership functions for acceleration
-    acc['NL'] = fuzz.trapmf(acc.universe, [0, 0, 31, 61])
-    acc['NM'] = fuzz.trimf(acc.universe, [31, 61, 95])
-    acc['NS'] = fuzz.trimf(acc.universe, [61, 95, 127])
-    acc['ZE'] = fuzz.trimf(acc.universe, [95, 127, 159])
-    acc['PS'] = fuzz.trimf(acc.universe, [127, 159, 191])
-    acc['PM'] = fuzz.trimf(acc.universe, [159, 191, 223])
-    acc['PL'] = fuzz.trapmf(acc.universe, [191, 223, 255, 255])
-    # Define membership function for throttle (output)
-    # For simplicity, let's use a triangular membership function
-    throttle['NL'] = fuzz.trapmf(throttle.universe, [0, 0, 31, 61])
-    throttle['NM'] = fuzz.trimf(throttle.universe, [31, 61, 95])
-    throttle['NS'] = fuzz.trimf(throttle.universe, [61, 95, 127])
-    throttle['ZE'] = fuzz.trimf(throttle.universe, [95, 127, 159])
-    throttle['PS'] = fuzz.trimf(throttle.universe, [127, 159, 191])
-    throttle['PM'] = fuzz.trimf(throttle.universe, [159, 191, 223])
-    throttle['PL'] = fuzz.trapmf(throttle.universe, [191, 223, 255, 255])
-    
-    # Visualize the membership functions for speed
-    plt.figure(figsize=(10, 6))
-    for label in spd.terms:
-        plt.plot(spd.universe, fuzz.interp_membership(spd.universe, spd[label].mf, spd.universe), label=label)
-    plt.title('Membership Functions for Speed')
-    plt.xlabel('Speed')
-    plt.ylabel('Membership')
-    plt.legend()
-    plt.grid(True)
-    
-    # Visualize the membership functions for acceleration
-    plt.figure(figsize=(10, 6))
-    for label in acc.terms:
-        plt.plot(acc.universe, fuzz.interp_membership(acc.universe, acc[label].mf, acc.universe), label=label)
-    plt.title('Membership Functions for Acceleration')
-    plt.xlabel('Acceleration')
-    plt.ylabel('Membership')
-    plt.legend()
-    plt.grid(True)
-    
-    # Visualize the membership functions for throttle
-    plt.figure(figsize=(10, 6))
-    for label in throttle.terms:
-        plt.plot(throttle.universe, fuzz.interp_membership(throttle.universe, throttle[label].mf, throttle.universe), label=label)
-    plt.title('Membership Functions for Throttle')
-    plt.xlabel('Throttle')
-    plt.ylabel('Membership')
-    plt.legend()
-    plt.grid(True)
-    
-    plt.show()
+
+class HiddenMarkovModel:
+    def _init_(self, states, observations, initial_probabilities, transition_matrix, emission_matrix):
+        self.states = states
+        self.observations = observations
+        self.initial_probabilities = initial_probabilities
+        self.transition_matrix = transition_matrix
+        self.emission_matrix = emission_matrix
+
+    def _forward_algorithm(self, observation_sequence):
+        T = len(observation_sequence)
+        N = len(self.states)
+        alpha = np.zeros((T, N))
+
+        #Initialization
+        alpha[0] = self.initial_probabilities * self.emission_matrix[:, self.observations.index(observation_sequence[0])]
+
+        #recursion
+        for t in range(1, T):
+            for j in range(N):
+                alpha[t, j] = np.sum(alpha[t-1] * self.transition_matrix[:, j]) * self.emission_matrix[j, self.observations.index(observation_sequence[t])]
+
+        return alpha
+
+    def _backward_algorithm(self, observation_sequence):
+        T = len(observation_sequence)
+        N = len(self.states)
+        beta = np.zeros((T, N))
+
+        beta[-1] = 1
+
+        for t in range(T-2, -1, -1):
+            for i in range(N):
+                beta[t, i] = np.sum(beta[t+1] * self.transition_matrix[i, :] * self.emission_matrix[:, self.observations.index(observation_sequence[t+1])])
+
+        return beta
+
+    def predict_sequence_probability(self, observation_sequence):
+        alpha = self._forward_algorithm(observation_sequence)
+        return np.sum(alpha[-1])
+
+    def predict_state_sequence(self, observation_sequence):
+        T = len(observation_sequence)
+        N = len(self.states)
+        delta = np.zeros((T, N))
+        psi = np.zeros((T, N))
+
+        delta[0] = self.initial_probabilities * self.emission_matrix[:, self.observations.index(observation_sequence[0])]
+
+        for t in range(1, T):
+            for j in range(N):
+                delta[t, j] = np.max(delta[t-1] * self.transition_matrix[:, j]) * self.emission_matrix[j, self.observations.index(observation_sequence[t])]
+                psi[t, j] = np.argmax(delta[t-1] * self.transition_matrix[:, j])
+
+        #backtracking
+        state_sequence = [np.argmax(delta[-1])]
+        for t in range(T-2, -1, -1):
+            state_sequence.insert(0, int(psi[t+1, state_sequence[0]]))
+
+        return [self.states[i] for i in state_sequence]
+
+states = ['Sunny', 'Rainy']
+observations = ['Walk', 'Shop', 'Clean']
+initial_probabilities = np.array([0.6, 0.4])
+transition_matrix = np.array([[0.7, 0.3],
+                               [0.4, 0.6]])
+emission_matrix = np.array([[0.1, 0.4, 0.5],
+                             [0.6, 0.3, 0.1]])
+
+hmm = HiddenMarkovModel(states, observations, initial_probabilities, transition_matrix, emission_matrix)
+
+observation_sequence = ['Walk', 'Shop', 'Clean']
+probability = hmm.predict_sequence_probability(observation_sequence)
+state_sequence = hmm.predict_state_sequence(observation_sequence)
+print("Probability of observing sequence {} is {:.4f}".format(observation_sequence, probability))
+print("Most likely state sequence:", state_sequence)
 
 
-def openLeft(x,alpha,beta):
-    if(x<alpha):
-        return 1
-    if alpha<x and x<=beta:
-        return ((beta-x)/(beta-alpha))
-    else:
-        return 0
-def openRight(x,alpha,beta):
-    if(x<alpha):
-        return 0
-    if alpha<x and x<=beta:
-        return ((x-alpha)/(beta-alpha))
-    else:
-        return 1
-def triangular(x,a,b,c):
-    return max(min((x-a)/(b-a),(c-x)/(c-b)),0)
-def partition(x):
-    NL=0
-    NM=0
-    NS=0
-    ZE=0
-    PS=0
-    PM=0
-    PL=0
-    if x>0 and x<61:
-        NL=openLeft(x, 0, 61)
-    if x>31 and x<95:
-        NM=triangular(x, 31, 61, 95)
-    if x>61 and x<127:
-        NS=triangular(x, 61, 95, 127)
-    if x>95 and x<159:
-        ZE=triangular(x, 95, 127, 159)
-    if x>127 and x<191:
-        PS=triangular(x, 127, 159, 191)
-    if x>159 and x<223:
-        PM=triangular(x, 159,191, 223)
-    if x>191 and x<255:
-        PL=openRight(x, 191, 255)
-    return NL,NM,NS,ZE,PS,PM,PL
-def compare(TC1,TC2):
-    TC=0
-    if TC1>TC2 and TC1!=0 and TC2!=0:
-        TC=TC2
-    else:
-        TC=TC1
-    if TC1==0 and TC2!=0:
-        TC=TC2
-    if TC2==0 and TC1!=0:
-        TC=TC1
-    return TC
-def rule(NLSD,NMSD,NSSD,ZESD,PSSD,PMSD,PLSD,NLAC,NMAC,NSAC,ZEAC,PSAC,PMAC,PLAC):
-    PLTC1=min(NLSD,ZEAC)
-    PLTC2=min(ZESD,NLAC)
-    PLTC=compare(PLTC1,PLTC2)
-    PMTC1=min(NMSD,ZEAC)
-    PMTC2=min(ZESD,NMAC)
-    PMTC=compare(PMTC1,PMTC2)
-    PSTC1=min(NSSD,PSAC)
-    PSTC2=min(ZESD,NSAC)
-    PSTC=compare(PSTC1, PSTC2)
-    NSTC=min(PSSD,NSAC)
-    NLTC=min(PLSD,ZEAC)
-    return PLTC,PMTC,PSTC,NSTC,NLTC
-def areaTR(mu,a,b,c):
-    x1=mu*(b-a)+a
-    x2=c-mu*(c-b)
-    d1=(c-a)
-    d2=x2-x1
-    a=(0.5)*mu*(d1+d2)
-    return a
-def areaOL(mu,a,b):
-    xOL=b-mu*(b-a)
-    return 0.5*mu*(b+xOL),b/2
-def areaOR(mu,a,b):
-    xOR=(b-a)*mu+a
-    aOR=0.5*mu*((240-a)+(240-xOR))
-    return aOR,(240-a)/2+a
-def defuzzyfication(PLTC,PMTC,PSTC,NSTC,NLTC):
-    areaPL=0
-    areaPM=0
-    areaPS=0
-    areaNS=0
-    areaNL=0
-    cPL=0
-    cPM=0
-    cPS=0
-    cNS=0
-    cNL=0
-    if PLTC!=0:
-        areaPL,cPL=areaOR(PLTC, 191, 255)
-    if PMTC!=0:
-        areaPM=areaTR(PMTC, 159, 191, 223)
-        cPM=191
-    if PSTC!=0:
-        areaPS=areaTR(PSTC, 127, 159, 191)
-        cPS=159
-    if NSTC != 0:
-        areaNS = areaTR(NSTC, 61, 95, 127)
-        cNS = 95
-    if NLTC !=0:
-        areaNL, cNL = areaOL(NLTC, 0, 61)
-    print(cPL,cNL)
-    numerator = areaPL*cPL + areaPM*cPM + areaPS*cPS + areaNS*cNS + areaNL*cNL
-    denominator = areaPL + areaPM + areaPS + areaNS + areaNL
-    if denominator ==0:
-        print("No rules exist to give the result")
-        return 0
-    else:
-        crispOutput = numerator/denominator
-        return crispOutput
-NLSD,NMSD,NSSD,ZESD,PSSD,PMSD,PLSD=partition(speed)
-NLAC,NMAC,NSAC,ZEAC,PSAC,PMAC,PLAC=partition(acceleration)
-output=[[NLSD,NMSD,NSSD,ZESD,PSSD,PMSD,PLSD],[NLAC,NMAC,NSAC,ZEAC,PSAC,PMAC,PLAC]]
-print("The fuzzy values of the crisp inputs:")
-print(np.round(output,2))
-PLTC, PMTC, PSTC, NSTC, NLTC = rule(NLSD,NMSD,NSSD,ZESD,PSSD,PMSD,PLSD,NLAC,NMAC,NSAC,ZEAC,PSAC,PMAC,PLAC)
-crispOutputFinal = defuzzyfication(PLTC, PMTC, PSTC, NSTC, NLTC)
-print(crispOutputFinal)
-# ip1 = np.array([NLSD,NMSD,NSSD,ZESD,PSSD,PMSD,PLSD])
-# ip2 = np.array([NLAC,NMAC,NSAC,ZEAC,PSAC,PMAC,PLAC])
-visualize_fuzzy_sets()
+
+
+
+
+
+
+import numpy as np
+class MarkovDecisionProcess:
+    def _init_(self, num_states, num_actions, transition_probabilities, rewards, discount_factor=0.9, tolerance=1e-6):
+        self.num_states = num_states
+        self.num_actions = num_actions
+        self.transition_probabilities = transition_probabilities
+        self.rewards = rewards
+        self.discount_factor = discount_factor
+        self.tolerance = tolerance
+
+    def value_iteration(self):
+        V = np.zeros(self.num_states)
+        while True:
+            V_new = np.zeros(self.num_states)
+            for s in range(self.num_states):
+                Q = np.zeros(self.num_actions)
+                for a in range(self.num_actions):
+                    for s_prime in range(self.num_states):
+                        Q[a] += self.transition_probabilities[s][a][s_prime] * (self.rewards[s][a][s_prime] + self.discount_factor * V[s_prime])
+                V_new[s] = np.max(Q)
+            if np.max(np.abs(V - V_new)) < self.tolerance:
+                break
+            V = V_new
+        policy = np.zeros(self.num_states, dtype=int)
+        for s in range(self.num_states):
+            Q = np.zeros(self.num_actions)
+            for a in range(self.num_actions):
+                for s_prime in range(self.num_states):
+                    Q[a] += self.transition_probabilities[s][a][s_prime] * (self.rewards[s][a][s_prime] + self.discount_factor * V[s_prime])
+            policy[s] = np.argmax(Q)
+        return V, policy
+
+# Example usage
+num_states = 3
+num_actions = 2
+transition_probabilities = np.array([[[0.7, 0.3, 0.0],
+                                      [0.1, 0.9, 0.0]],
+                                     [[0.0, 0.8, 0.2],
+                                      [0.0, 0.0, 1.0]],
+                                     [[0.8, 0.1, 0.1],
+                                      [0.0, 0.0, 1.0]]])
+rewards = np.array([[[1, 0, 0],
+                     [2, 0, 0]],
+                    [[0, 0, 0],
+                     [0, 0, 1]],
+                    [[-1, 0, 0],
+                     [0, 0, -1]]])
+mdp = MarkovDecisionProcess(num_states, num_actions, transition_probabilities, rewards)
+optimal_values, optimal_policy = mdp.value_iteration()
+print("Optimal values:", optimal_values)
+print("Optimal policy:", optimal_policy)

@@ -1,0 +1,129 @@
+#VSM
+import pandas as pd
+import nltk
+import math
+import string
+import matplotlib.pyplot as plt
+from collections import defaultdict, Counter
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+
+# Download necessary NLTK resources
+nltk.download('punkt_tab')
+nltk.download('stopwords')
+
+# Load the movie dataset from CSV
+df = pd.read_csv("action.csv")  # Replace with your actual CSV filename
+
+# Preprocessing Function
+def preprocess_text(text):
+    if pd.isna(text):  # Handle NaN values
+        return []
+    tokens = word_tokenize(text.lower())  # Convert to lowercase & tokenize
+    tokens = [word for word in tokens if word not in stopwords.words('english')]  # Remove stopwords
+    tokens = [word for word in tokens if word not in string.punctuation]  # Remove punctuation
+    stemmer = PorterStemmer()
+    tokens = [stemmer.stem(word) for word in tokens]  # Stemming
+    return tokens
+
+# Build the Inverted Index
+inverted_index = defaultdict(set)
+for index, row in df.iterrows():
+    movie_id = row["movie_id"]
+    genre_tokens = preprocess_text(row["genre"])  # Process genre column
+    desc_tokens = preprocess_text(row["description"])  # Process description column
+    tokens = genre_tokens + desc_tokens  # Combine important fields
+    for token in tokens:
+        inverted_index[token].add(movie_id)  # Store movie_id in the index
+
+# Compute Term Frequency (TF)
+def compute_tf(doc_tokens):
+    term_freq = Counter(doc_tokens)
+    total_terms = len(doc_tokens)
+    return {term: freq / total_terms for term, freq in term_freq.items()}
+
+# Compute Inverse Document Frequency (IDF)
+def compute_idf(inverted_index, total_docs):
+    return {term: math.log(total_docs / (1 + len(doc_list))) for term, doc_list in inverted_index.items()}
+
+# Apply TF-IDF
+total_docs = len(df)
+idf_values = compute_idf(inverted_index, total_docs)
+
+# Retrieve Movies Matching Query
+query = "Find action and comedy movies with rating between 8 and 10"
+query_tokens = preprocess_text(query)
+
+# Filter movies by rating
+filtered_movies = df[(df["rating"] >= 8.0) & (df["rating"] <= 10.0)]
+
+# Rank Movies using TF-IDF
+movie_scores = defaultdict(float)
+for token in query_tokens:
+    if token in inverted_index:
+        for movie_id in inverted_index[token]:
+            if movie_id in filtered_movies["movie_id"].values:
+                movie_scores[movie_id] += idf_values.get(token, 0)
+
+# Sort results by score
+ranked_movies = sorted(movie_scores.items(), key=lambda x: x[1], reverse=True)
+
+# Print top matching movies
+print("Top Matching Movies:")
+for movie_id, score in ranked_movies[:5]:
+    movie_row = df[df["movie_id"] == movie_id].iloc[0]
+    print(f"{movie_row['movie_name']} ({movie_row['year']}), Rating: {movie_row['rating']}, Score: {score:.4f}")
+
+# Precision-Recall Evaluation
+def evaluate_results(retrieved_movies, relevant_movies):
+    retrieved_set = set(retrieved_movies)
+    relevant_set = set(relevant_movies)
+
+    precision = len(retrieved_set & relevant_set) / len(retrieved_set) if retrieved_set else 0
+    recall = len(retrieved_set & relevant_set) / len(relevant_set) if relevant_set else 0
+    return precision, recall
+
+# Compute Precision & Recall
+relevant_movies = filtered_movies["movie_id"].values.tolist()
+retrieved_movies = [movie_id for movie_id, _ in ranked_movies[:10]]
+precision, recall = evaluate_results(retrieved_movies, relevant_movies)
+print(f"Precision: {precision:.2f}, Recall: {recall:.2f}")
+
+# Plot Interpolated Precision-Recall Curve
+def plot_precision_recall_curve(precision_vals, recall_vals):
+    plt.plot(recall_vals, precision_vals, marker="o")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Interpolated Precision-Recall Curve")
+    plt.grid()
+    plt.show()
+
+# Sample precision-recall values
+plot_precision_recall_curve([1, 0.9, 0.8, 0.7, 0.6], [0.1, 0.3, 0.5, 0.7, 0.9])
+
+#BM
+import pandas as pd
+
+# Sample dataset: Load this from your file
+data = {
+    "Title": ["Movie1", "Movie2", "Movie3", "Movie4"],
+    "Genres": ["Action,Comedy", "Action", "Comedy", "Drama"],
+    "Rating": [8.5, 7.8, 9.0, 6.5]
+}
+
+df = pd.DataFrame(data)
+
+# Boolean retrieval function
+def boolean_retrieval(df, genres, min_rating, max_rating):
+    filtered_df = df[
+        (df["Genres"].str.contains("Action")) & 
+        (df["Genres"].str.contains("Comedy")) & 
+        (df["Rating"] >= min_rating) & 
+        (df["Rating"] <= max_rating)
+    ]
+    return filtered_df
+
+# Query: Action and Comedy with rating 8-10
+result = boolean_retrieval(df, ["Action", "Comedy"], 8, 10)
+print(result)

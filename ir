@@ -140,27 +140,35 @@ def plot_precision_recall_curve(precision_vals, recall_vals):
 plot_precision_recall_curve(precision_vals, recall_vals)
 
 #BM
-import pandas as pd
-
-# Sample dataset: Load this from your file
-data = {
-    "Title": ["Movie1", "Movie2", "Movie3", "Movie4"],
-    "Genres": ["Action,Comedy", "Action", "Comedy", "Drama"],
-    "Rating": [8.5, 7.8, 9.0, 6.5]
+# Sample document collection
+documents = {
+    1: "information retrieval boolean model example",
+    2: "boolean algebra and retrieval techniques",
+    3: "search engines use boolean retrieval model",
+    4: "this is an example of a simple search system"
 }
 
-df = pd.DataFrame(data)
+# Indexing: Convert each document into a set of words
+index = {doc_id: set(text.split()) for doc_id, text in documents.items()}
 
-# Boolean retrieval function
-def boolean_retrieval(df, genres, min_rating, max_rating):
-    filtered_df = df[
-        (df["Genres"].str.contains("Action")) & 
-        (df["Genres"].str.contains("Comedy")) & 
-        (df["Rating"] >= min_rating) & 
-        (df["Rating"] <= max_rating)
-    ]
-    return filtered_df
+# Boolean Query Processing
+def boolean_search(query, operator):
+    terms = query.split()
+    
+    # Get sets of document IDs containing each term
+    result_sets = [set(doc_id for doc_id, words in index.items() if term in words) for term in terms]
+    
+    if operator == "AND":
+        return set.intersection(*result_sets)
+    elif operator == "OR":
+        return set.union(*result_sets)
+    elif operator == "NOT":
+        all_docs = set(index.keys())
+        return all_docs - result_sets[0]  # NOT applies to the first term only
+    else:
+        return set()  # Invalid operator
 
-# Query: Action and Comedy with rating 8-10
-result = boolean_retrieval(df, ["Action", "Comedy"], 8, 10)
-print(result)
+# Example Queries
+print("AND search:", boolean_search("boolean retrieval", "AND"))  # Intersection
+print("OR search:", boolean_search("boolean retrieval", "OR"))    # Union
+print("NOT search:", boolean_search("boolean", "NOT"))            # Complement

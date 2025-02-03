@@ -40,6 +40,19 @@ def min_max_scaling(data, column):
 
 data = min_max_scaling(data, 'Salary')
 
+def max_absolute_scaling(data, column):
+    values = [abs(row[column]) for row in data if row[column] is not None]  # Handle None values
+    max_abs_val = max(values) if values else 1  # Avoid division by zero
+    
+    for row in data:
+        if row[column] is not None:
+            row[column] = row[column] / max_abs_val  # Scale each value
+        else:
+            row[column] = 0  # Handle missing values gracefully
+    
+    return data
+data = max_absolute_scaling(data, 'Salary')
+
 # 5. Standardization (Z-Score)
 def z_score_standardization(data, column):
     values = [row[column] for row in data]
@@ -138,83 +151,124 @@ def chi_square_feature_selection(data, target_column):
     return category_counts
 
 chi_square_result = chi_square_feature_selection(data, 'Purchased_Yes')
-          
-# 14. APRIORI ALGORITHM
+
+# 14. APRIORI STARTS HERE
+import csv
+from collections import defaultdict
 from itertools import combinations
 
-def get_support(itemset, transactions):
-    """Calculate the support of an itemset."""
-    return sum(1 for transaction in transactions if itemset.issubset(transaction)) / len(transactions)
+import pandas as pd
 
-def generate_candidates(prev_frequent, k):
-    """Generate candidate itemsets of length k from the previous frequent itemsets."""
-    candidates = set()
-    prev_frequent_list = list(prev_frequent)
-    
-    for i in range(len(prev_frequent_list)):
-        for j in range(i + 1, len(prev_frequent_list)):
-            union_set = prev_frequent_list[i] | prev_frequent_list[j]
-            if len(union_set) == k:
-                candidates.add(union_set)
-    return candidates
+def read_transactions_from_csv(filename):
+    df = pd.read_csv(filename, header=None, dtype=str)
+    transactions = [set(df.iloc[i].dropna().str.strip()) for i in range(len(df))]
+    print(transactions)
+    return transactions
 
-def apriori(transactions, min_support):
-    """Apriori algorithm to find frequent itemsets."""
-    frequent_itemsets = []
-    single_items = {frozenset([item]) for transaction in transactions for item in transaction}
-    
-    current_frequent = {item for item in single_items if get_support(item, transactions) >= min_support}
-    k = 2
-    
-    while current_frequent:
-        frequent_itemsets.extend(current_frequent)
-        candidates = generate_candidates(current_frequent, k)
-        current_frequent = {itemset for itemset in candidates if get_support(itemset, transactions) >= min_support}
-        k += 1
-    
+def has_infrequent_subset(candidate, frequent_itemsets):
+    for subset in combinations(candidate, len(candidate) - 1):
+        if frozenset(subset) not in frequent_itemsets:
+            return False
+    return True
+
+def get_frequent_itemsets(transactions, min_support):
+    item_counts = defaultdict(int)
+    for transaction in transactions:
+        for item in transaction:
+            item_counts[frozenset([item])] += 1
+
+    min_support_count = len(transactions) * min_support
+    frequent_itemsets = {}
+
+    for itemset, count in item_counts.items():
+        if count >= min_support_count:
+            frequent_itemsets[itemset] = count  # Ensure it's an integer value
+
+    k = 2  # Ensure k is an integer
+    while True:
+        candidates = set()
+
+        frequent_items = list(frequent_itemsets.keys())
+        print(frequent_items)
+
+        for i in range(len(frequent_items)):
+            for j in range(i + 1, len(frequent_items)):
+                items1 = set(frequent_items[i])
+                items2 = set(frequent_items[j])
+                union = items1.union(items2)
+                if len(union) == k and has_infrequent_subset(union, frequent_itemsets):
+                    candidates.add(frozenset(union))
+
+        if not candidates:
+            break
+
+        candidate_counts = defaultdict(int)
+        for transaction in transactions:
+            for candidate in candidates:
+                if candidate.issubset(transaction):
+                    candidate_counts[candidate] += 1
+
+        new_frequent = {}
+        for itemset, count in candidate_counts.items():
+            if count >= min_support_count:
+                new_frequent[itemset] = count  # Ensure it's an integer value
+
+        if not new_frequent:
+            break
+
+        frequent_itemsets.update(new_frequent)  # Ensure dictionary update is correct
+        k += 1  # Ensure k is always an integer
+
     return frequent_itemsets
 
+
 def generate_association_rules(frequent_itemsets, transactions, min_confidence):
-    """Generate strong association rules from frequent itemsets."""
     rules = []
-    for itemset in frequent_itemsets:
-        if len(itemset) > 1:  # Only generate rules for sets with more than one item
-            for i in range(1, len(itemset)):
-                for subset in combinations(itemset, i):
-                    antecedent = frozenset(subset)
-                    consequent = itemset - antecedent
-                    support_antecedent = get_support(antecedent, transactions)
-                    support_itemset = get_support(itemset, transactions)
-                    confidence = support_itemset / support_antecedent if support_antecedent > 0 else 0
+    total_transactions = len(transactions)
 
-                    if confidence >= min_confidence:
-                        rules.append((antecedent, consequent, confidence))
+    for itemset, support in frequent_itemsets.items():
+        if len(itemset) < 2:
+            continue
 
+        for i in range(1, len(itemset)):
+            for antecedent in combinations(itemset, i):
+                antecedent = frozenset(antecedent)
+                consequent = frozenset(itemset - antecedent)
+                antecedent_support = sum(1 for t in transactions if antecedent.issubset(t))
+                confidence = support / antecedent_support
+
+                if confidence >= min_confidence:
+                    support_percentage = support / total_transactions
+                    rules.append((set(antecedent), set(consequent), confidence, support_percentage))
+
+    rules.sort(key=sort_by_confidence, reverse=True)
     return rules
 
-# Transactions dataset
-transactions = [
-    {'Milk', 'Bread', 'Eggs'},
-    {'Bread', 'Butter', 'Eggs'},
-    {'Milk', 'Bread', 'Butter', 'Cheese'},
-    {'Milk', 'Butter', 'Cheese', 'Eggs'},
-    {'Bread', 'Butter', 'Cheese'},
-    {'Milk', 'Bread', 'Eggs'}
-]
+def sort_by_confidence(rule):
+    return rule[2]
 
-# Parameters
-min_support = 0.3
-min_confidence = 0.7  # Example: minimum confidence of 70%
+def print_rules(rules):
+    """Print association rules in a readable format."""
+    for antecedent, consequent, confidence, support in rules:
+        print(f"{antecedent} => {consequent}")
+        print(f"Confidence: {confidence:.2%}")
+        print(f"Support: {support:.2%}")
+        print("-" * 50)
 
-# Run Apriori Algorithm
-frequent_itemsets = apriori(transactions, min_support)
-print("Frequent Itemsets:", frequent_itemsets)
 
-# Generate and print strong association rules
-strong_rules = generate_association_rules(frequent_itemsets, transactions, min_confidence)
-print("\nStrong Association Rules:")
-for rule in strong_rules:
-    print(f"{set(rule[0])} => {set(rule[1])} (Confidence: {rule[2]:.2f})")
+filename = "data.csv"
+min_support = 0.2  # 20% minimum support
+min_confidence = 0.5  # 50% minimum confidence
+
+transactions = read_transactions_from_csv(filename)
+frequent_itemsets = get_frequent_itemsets(transactions, min_support)
+print("Frequent Itemsets:")
+for itemset, support in frequent_itemsets.items():
+    print(f"{itemset} (Support: {support})")
+
+print("\nAssociation Rules:")
+rules = generate_association_rules(frequent_itemsets, transactions, min_confidence)
+print_rules(rules)
 
 #FP TREE
 import pandas as pd

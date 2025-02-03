@@ -216,3 +216,35 @@ print("\nStrong Association Rules:")
 for rule in strong_rules:
     print(f"{set(rule[0])} => {set(rule[1])} (Confidence: {rule[2]:.2f})")
 
+#FP TREE
+import pandas as pd
+from mlxtend.frequent_patterns import fpgrowth, association_rules
+
+# Define dataset
+transactions = [
+    {'Milk', 'Bread', 'Eggs'},
+    {'Bread', 'Butter', 'Eggs'},
+    {'Milk', 'Bread', 'Butter', 'Cheese'},
+    {'Milk', 'Butter', 'Cheese', 'Eggs'},
+    {'Bread', 'Butter', 'Cheese'},
+    {'Milk', 'Bread', 'Eggs'}
+]
+
+# Convert transactions into a DataFrame (one-hot encoding format)
+unique_items = sorted({item for transaction in transactions for item in transaction})  # Get all unique items
+df = pd.DataFrame([{item: (item in transaction) for item in unique_items} for transaction in transactions])
+
+# Apply FP-Growth algorithm
+min_support = 0.3
+frequent_itemsets = fpgrowth(df, min_support=min_support, use_colnames=True)
+
+# Generate association rules
+min_confidence = 0.7
+rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
+
+# Display results
+print("\nFrequent Itemsets:")
+print(frequent_itemsets)
+
+print("\nStrong Association Rules:")
+print(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])

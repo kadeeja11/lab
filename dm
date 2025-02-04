@@ -274,31 +274,34 @@ print_rules(rules)
 import pandas as pd
 from mlxtend.frequent_patterns import fpgrowth, association_rules
 
-# Define dataset
-transactions = [
-    {'Milk', 'Bread', 'Eggs'},
-    {'Bread', 'Butter', 'Eggs'},
-    {'Milk', 'Bread', 'Butter', 'Cheese'},
-    {'Milk', 'Butter', 'Cheese', 'Eggs'},
-    {'Bread', 'Butter', 'Cheese'},
-    {'Milk', 'Bread', 'Eggs'}
-]
+def read_transactions_from_csv(filename):
+    df = pd.read_csv(filename, header=None, dtype=str).fillna("")
+    transactions = df.apply(lambda row: [item.strip() for item in row if item.strip()], axis=1).tolist()
+    return transactions
 
-# Convert transactions into a DataFrame (one-hot encoding format)
-unique_items = sorted({item for transaction in transactions for item in transaction})  # Get all unique items
-df = pd.DataFrame([{item: (item in transaction) for item in unique_items} for transaction in transactions])
+def convert_to_dataframe(transactions):
+    """Convert transactions into a one-hot encoded Pandas DataFrame."""
+    unique_items = sorted(set(item for transaction in transactions for item in transaction))
+    df = pd.DataFrame([{item: (item in transaction) for item in unique_items} for transaction in transactions])
+    return df
+
+filename = "data.csv"
+min_support = 0.2  # Minimum support threshold (20%)
+min_confidence = 0.5  # Minimum confidence threshold (50%)
+
+# Read and process transactions
+transactions = read_transactions_from_csv(filename)
+df = convert_to_dataframe(transactions)
 
 # Apply FP-Growth algorithm
-min_support = 0.3
 frequent_itemsets = fpgrowth(df, min_support=min_support, use_colnames=True)
 
 # Generate association rules
-min_confidence = 0.7
 rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
 
-# Display results
+# Print results
 print("\nFrequent Itemsets:")
 print(frequent_itemsets)
 
-print("\nStrong Association Rules:")
-print(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
+print("\nAssociation Rules:")
+print(rules[['antecedents', 'consequents', 'support', 'confidence']])

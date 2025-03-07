@@ -1,174 +1,144 @@
-#VSM
+#text classification
 import pandas as pd
-import nltk
-import math
-import string
+from sklearn.metrics import accuracy_score
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
+
+def load_data_from_csv(file_path):
+    df = pd.read_csv(file_path)
+    texts = df['documents'].tolist()
+    labels = df['outcome'].tolist()
+    return texts, labels
+
+def train_and_evaluate(texts, labels):
+    X_train, X_test, y_train, y_test = train_test_split(texts, labels, test_size=0.25, random_state=42)
+    vectorizer = CountVectorizer()
+    X_train_counts = vectorizer.fit_transform(X_train)
+    X_test_counts = vectorizer.transform(X_test)
+
+    classifier = MultinomialNB()
+    classifier.fit(X_train_counts, y_train)
+
+    y_pred = classifier.predict(X_test_counts)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Accuracy: {accuracy:.2f}")
+
+    return vectorizer, classifier
+
+def classify_text(text, vectorizer, classifier):
+    text_counts = vectorizer.transform([text])
+    prediction = classifier.predict(text_counts)[0]
+    return prediction
+
+file_path = 'ca2.csv'
+# file_path = 'data.txt'
+
+# If reading from CSV
+texts, labels = load_data_from_csv(file_path)
+
+vectorizer, classifier = train_and_evaluate(texts, labels)
+
+new_text = "I like using this product"
+result = classify_text(new_text, vectorizer, classifier)
+print(f"Text: '{new_text}' → Prediction: {result}")
+
+
+
+
+
+#probabilistic
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+from numpy import dot
+from numpy.linalg import norm
+from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
-import matplotlib.pyplot as plt
-from collections import defaultdict, Counter
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import PorterStemmer
-from sklearn.metrics.pairwise import cosine_similarity
-# Precision-Recall Evaluation
-from sklearn.metrics import precision_recall_curve
-# Download necessary NLTK resources
-nltk.download('punkt')
-nltk.download('stopwords')
 
-# Load the movie dataset from CSV
-df = pd.read_csv("action.csv")  # Replace with your actual CSV filename
+def load_data_from_csv(file_path):
+    df = pd.read_csv(file_path)
+    documents = df['documents'].tolist()
+    return documents
 
-# Preprocessing Function
-def preprocess_text(text):
-    if pd.isna(text):  # Handle NaN values
-        return []
-    tokens = word_tokenize(text.lower())  # Convert to lowercase & tokenize
-    tokens = [word for word in tokens if word not in stopwords.words('english')]  # Remove stopwords
-    tokens = [word for word in tokens if word not in string.punctuation]  # Remove punctuation
-    stemmer = PorterStemmer()
-    tokens = [stemmer.stem(word) for word in tokens]  # Stemming
-    return tokens
+documents = load_data_from_csv('documents.csv')
+# Text Preprocessing - Simple tokenization using split
+filtered_token_set = []
+for doc in documents:
+    tokens = doc.lower().split()
+    filtered_tokens = [token for token in tokens if token.isalnum()]
+    filtered_token_set.append(" ".join(filtered_tokens))
 
-# Build the Inverted Index and Compute TF
-inverted_index = defaultdict(set)
-tf_values = defaultdict(lambda: defaultdict(float))
+# TF-IDF Vectorization
+tv = TfidfVectorizer()
+document_matrix = tv.fit_transform(filtered_token_set)
+td = pd.DataFrame(document_matrix.toarray(), columns=tv.get_feature_names_out())
 
-for index, row in df.iterrows():
-    movie_id = row["movie_id"]
-    genre_tokens = preprocess_text(row["genre"])  # Process genre column
-    tokens = genre_tokens  # You can also add description tokens
+# Query Processing
+query = ["natural language processing"]
+query_vector = tv.transform(query).toarray()[0]
 
-    term_freq = Counter(tokens)
-    total_terms = len(tokens)
+# Cosine Similarity Calculation
+cos_sim = []
+for i in range(td.shape[0]):
+    doc_vector = td.iloc[i].values
+    similarity = dot(doc_vector, query_vector) / (norm(doc_vector) * norm(query_vector))
+    cos_sim.append(similarity)
 
-    for token, freq in term_freq.items():
-        tf_values[movie_id][token] = freq / total_terms  # Compute TF
-        inverted_index[token].add(movie_id)  # Store movie_id in the index
+# Print Results
+print("Cosine Similarity Scores:")
+for idx, score in enumerate(cos_sim):
+    print(f"Document {idx+1}: {score:.4f}")
 
-# Compute Inverse Document Frequency (IDF)
-def compute_idf(inverted_index, total_docs):
-    return {term: math.log(total_docs / (1 + len(doc_list))) for term, doc_list in inverted_index.items()}
+# Phase 1: Select top k documents
+k = 2
+top_k_indices = sorted(range(len(cos_sim)), key=lambda i: cos_sim[i], reverse=True)[:k]
 
-# Apply TF-IDF
-total_docs = len(df)
-idf_values = compute_idf(inverted_index, total_docs)
+relevant_documents = [i+1 for i in top_k_indices]
+non_relevant_documents = [i+1 for i in range(len(documents)) if i not in top_k_indices]
+print("\nRelevant docs in phase 1:", relevant_documents)
+print("Non-relevant docs in phase 1:", non_relevant_documents)
 
-# Compute TF-IDF vectors for each movie
-tfidf_vectors = defaultdict(lambda: defaultdict(float))
+# Phase 2: Binary Independence Model
+cv = CountVectorizer()
+cv_ans = cv.fit_transform(filtered_token_set)
+tdm = pd.DataFrame(cv_ans.toarray(), columns=cv.get_feature_names_out())
+tdm_bool = tdm.astype(bool).astype(int)
 
-for movie_id, tf_terms in tf_values.items():
-    for term, tf in tf_terms.items():
-        tfidf_vectors[movie_id][term] = tf * idf_values.get(term, 0)  # TF-IDF formula
+print("\nBinary Document-Term Matrix:")
+print(tdm_bool)
 
-# Convert TF-IDF dictionary to vectors (for cosine similarity)
-def vectorize(tfidf_dict, vocab):
-    return np.array([tfidf_dict.get(term, 0) for term in vocab])
+# Apply Binary Independence Model (BIM) Formula for Query Terms
+N = len(documents)  # Total number of documents
+S = len(relevant_documents)  # Number of relevant documents
 
-# Retrieve Movies Matching Query using Cosine Similarity
-query = "Find action and comedy movies with rating between 8 and 10"
-query_tokens = preprocess_text(query)
+bim_scores = {}
 
-# Compute TF-IDF for query
-query_tf = Counter(query_tokens)
-query_tfidf = {term: (query_tf[term] / len(query_tokens)) * idf_values.get(term, 0) for term in query_tokens}
+# Compute BIM score only for query terms
+query_tokens = query[0].split()
+print("\nQuery tokens:", query_tokens)
 
-# Define movie filtering condition
-filtered_movies = df[(df["rating"] >= 8.0) & (df["rating"] <= 10.0)]
-filtered_movie_ids = set(filtered_movies["movie_id"].values)
+for term in query_tokens:
+    if term in tdm.columns:
+        n = tdm_bool[term].sum()  # Number of documents containing the term
+        s = tdm_bool.iloc[top_k_indices][term].sum()  # Number of relevant documents containing the term
+        # Apply BIM formula
+        numerator = (S + 0.5) / (S - s + 0.5)
+        denominator = (n - s + 0.5) / (N - S - n + s + 0.5)
+        bim_score = np.log(numerator / denominator)
+        bim_scores[term] = bim_score
 
-# Compute Cosine Similarity
-movie_scores = {}
+# Print BIM Scores for Query Terms
+print("\nBinary Independence Model (BIM) Scores for Query Terms:")
+for term, score in bim_scores.items():
+    print(f"{term}: {score:.4f}")
 
-vocab = list(idf_values.keys())  # Global vocabulary
-
-query_vector = vectorize(query_tfidf, vocab)
-
-movie_vectors = np.array([vectorize(tfidf_vectors[movie_id], vocab) for movie_id in filtered_movie_ids])
-query_vector = vectorize(query_tfidf, vocab).reshape(1, -1)  # Reshape for sklearn
-
-# Compute cosine similarity in one go
-cosine_similarities = cosine_similarity(query_vector, movie_vectors)[0]
-
-# Store movie scores
-movie_scores = {movie_id: cosine_sim for movie_id, cosine_sim in zip(filtered_movie_ids, cosine_similarities)}
-
-# Sort results by cosine similarity
-ranked_movies = sorted(movie_scores.items(), key=lambda x: x[1], reverse=True)
-
-# Print top matching movies
-print("Top Matching Movies:")
-for movie_id, score in ranked_movies[:5]:
-    movie_row = df[df["movie_id"] == movie_id].iloc[0]
-    print(f"{movie_row['movie_name']} ({movie_row['year']}), Rating: {movie_row['rating']}, Score: {score:.4f}")
-
-
-def evaluate_results(retrieved_movies, relevant_movies):
-    """
-    Compute precision-recall values using sklearn's precision_recall_curve function.
-    """
-    relevant_set = set(relevant_movies)
-    
-    # Create binary relevance labels (1 if relevant, 0 if not)
-    y_true = [1 if movie in relevant_set else 0 for movie in retrieved_movies]
-    
-    # Assume a score of 1 for retrieved movies (since ranking isn't used here)
-    y_scores = [1] * len(retrieved_movies)
-
-    # Compute precision, recall, and thresholds
-    precision_vals, recall_vals, _ = precision_recall_curve(y_true, y_scores)
-
-    return precision_vals, recall_vals
-
-
-# Compute Precision & Recall
-relevant_movies = filtered_movies["movie_id"].values.tolist()
-retrieved_movies = [movie_id for movie_id, _ in ranked_movies[:10]]
-precision_vals, recall_vals = evaluate_results(retrieved_movies, relevant_movies)
-
-# Plot Interpolated Precision-Recall Curve
-def plot_precision_recall_curve(precision_vals, recall_vals):
-    plt.plot(recall_vals, precision_vals, marker="o", linestyle="-", label="P-R Curve")
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.title("Interpolated Precision-Recall Curve")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-# Plot the curve
-plot_precision_recall_curve(precision_vals, recall_vals)
-
-#BM
-# Sample document collection
-documents = {
-    1: "information retrieval boolean model example",
-    2: "boolean algebra and retrieval techniques",
-    3: "search engines use boolean retrieval model",
-    4: "this is an example of a simple search system"
-}
-
-# Indexing: Convert each document into a set of words
-index = {doc_id: set(text.split()) for doc_id, text in documents.items()}
-
-# Boolean Query Processing
-def boolean_search(query, operator):
-    terms = query.split()
-    
-    # Get sets of document IDs containing each term
-    result_sets = [set(doc_id for doc_id, words in index.items() if term in words) for term in terms]
-    
-    if operator == "AND":
-        return set.intersection(*result_sets)
-    elif operator == "OR":
-        return set.union(*result_sets)
-    elif operator == "NOT":
-        all_docs = set(index.keys())
-        return all_docs - result_sets[0]  # NOT applies to the first term only
-    else:
-        return set()  # Invalid operator
-
-# Example Queries
-print("AND search:", boolean_search("boolean retrieval", "AND"))  # Intersection
-print("OR search:", boolean_search("boolean retrieval", "OR"))    # Union
-print("NOT search:", boolean_search("boolean", "NOT"))            # Complement
+# Calculate final scores for each document
+score_list = []
+for j in range(tdm_bool.shape[0]):
+    vec = tdm_bool.iloc[j]
+    score = 0
+    for term in query_tokens:
+        if term in bim_scores:
+            score += vec[term] * bim_scores[term]
+    score_list.append(score)
+print("\nFinal BIM scores:", score_list)

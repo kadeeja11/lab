@@ -1,144 +1,147 @@
-#text classification
 import pandas as pd
-from sklearn.metrics import accuracy_score
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer
-
-def load_data_from_csv(file_path):
-    df = pd.read_csv(file_path)
-    texts = df['documents'].tolist()
-    labels = df['outcome'].tolist()
-    return texts, labels
-
-def train_and_evaluate(texts, labels):
-    X_train, X_test, y_train, y_test = train_test_split(texts, labels, test_size=0.25, random_state=42)
-    vectorizer = CountVectorizer()
-    X_train_counts = vectorizer.fit_transform(X_train)
-    X_test_counts = vectorizer.transform(X_test)
-
-    classifier = MultinomialNB()
-    classifier.fit(X_train_counts, y_train)
-
-    y_pred = classifier.predict(X_test_counts)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {accuracy:.2f}")
-
-    return vectorizer, classifier
-
-def classify_text(text, vectorizer, classifier):
-    text_counts = vectorizer.transform([text])
-    prediction = classifier.predict(text_counts)[0]
-    return prediction
-
-file_path = 'ca2.csv'
-# file_path = 'data.txt'
-
-# If reading from CSV
-texts, labels = load_data_from_csv(file_path)
-
-vectorizer, classifier = train_and_evaluate(texts, labels)
-
-new_text = "I like using this product"
-result = classify_text(new_text, vectorizer, classifier)
-print(f"Text: '{new_text}' → Prediction: {result}")
-
-
-
-
-
-#probabilistic
-from sklearn.feature_extraction.text import TfidfVectorizer
-import pandas as pd
-from numpy import dot
-from numpy.linalg import norm
-from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import csr_matrix
 
-def load_data_from_csv(file_path):
-    df = pd.read_csv(file_path)
-    documents = df['documents'].tolist()
-    return documents
+# Load datasets
+books = pd.read_csv('Books.csv')
+ratings = pd.read_csv('Ratings.csv')
+users = pd.read_csv('Users.csv')
 
-documents = load_data_from_csv('documents.csv')
-# Text Preprocessing - Simple tokenization using split
-filtered_token_set = []
-for doc in documents:
-    tokens = doc.lower().split()
-    filtered_tokens = [token for token in tokens if token.isalnum()]
-    filtered_token_set.append(" ".join(filtered_tokens))
+ratings['User-ID'] = ratings['User-ID'].astype(str)
 
-# TF-IDF Vectorization
-tv = TfidfVectorizer()
-document_matrix = tv.fit_transform(filtered_token_set)
-td = pd.DataFrame(document_matrix.toarray(), columns=tv.get_feature_names_out())
+# CONTENT-BASED RECOMMENDATION
+def content_based_recommendation(book_title, n=5):
+    book_mask = books['Book-Title'].str.contains(book_title, case=False, na=False)
+    return books[book_mask][['Book-Title', 'Book-Author']].head(n)
 
-# Query Processing
-query = ["natural language processing"]
-query_vector = tv.transform(query).toarray()[0]
+# COLLABORATIVE FILTERING (USER-BASED & ITEM-BASED)
+def collaborative_filtering(user_id, n=5, method='user'):
+    user_id = str(user_id)
 
-# Cosine Similarity Calculation
-cos_sim = []
-for i in range(td.shape[0]):
-    doc_vector = td.iloc[i].values
-    similarity = dot(doc_vector, query_vector) / (norm(doc_vector) * norm(query_vector))
-    cos_sim.append(similarity)
+    user_item = ratings.pivot_table(index='User-ID', columns='ISBN', values='Book-Rating').fillna(0)
 
-# Print Results
-print("Cosine Similarity Scores:")
-for idx, score in enumerate(cos_sim):
-    print(f"Document {idx+1}: {score:.4f}")
+    if user_id not in user_item.index:
+        print(f"User {user_id} not found in dataset!")
+        return pd.DataFrame(columns=['Book-Title', 'Book-Author'])
 
-# Phase 1: Select top k documents
-k = 2
-top_k_indices = sorted(range(len(cos_sim)), key=lambda i: cos_sim[i], reverse=True)[:k]
+    sparse_matrix = csr_matrix(user_item.values)
 
-relevant_documents = [i+1 for i in top_k_indices]
-non_relevant_documents = [i+1 for i in range(len(documents)) if i not in top_k_indices]
-print("\nRelevant docs in phase 1:", relevant_documents)
-print("Non-relevant docs in phase 1:", non_relevant_documents)
+    if method == 'user':
+        user_sim = cosine_similarity(sparse_matrix, dense_output=False)
+        user_idx = user_item.index.get_loc(user_id)
 
-# Phase 2: Binary Independence Model
-cv = CountVectorizer()
-cv_ans = cv.fit_transform(filtered_token_set)
-tdm = pd.DataFrame(cv_ans.toarray(), columns=cv.get_feature_names_out())
-tdm_bool = tdm.astype(bool).astype(int)
+        sim_scores = list(enumerate(user_sim[user_idx].toarray().flatten()))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:min(100, len(sim_scores))]
 
-print("\nBinary Document-Term Matrix:")
-print(tdm_bool)
+        similar_users = [user_item.index[i[0]] for i in sim_scores]
+        weighted_ratings = user_item.loc[similar_users].T.dot([i[1] for i in sim_scores])
+        weighted_ratings /= sum(i[1] for i in sim_scores)
 
-# Apply Binary Independence Model (BIM) Formula for Query Terms
-N = len(documents)  # Total number of documents
-S = len(relevant_documents)  # Number of relevant documents
+    else: 
+        item_sim = cosine_similarity(sparse_matrix.T, dense_output=False)
+        item_sim_df = pd.DataFrame(item_sim.toarray(), index=user_item.columns, columns=user_item.columns)
 
-bim_scores = {}
+        user_ratings = user_item.loc[user_id].dropna()
+        scores = item_sim_df[user_ratings.index].dot(user_ratings).div(item_sim_df[user_ratings.index].sum(axis=1))
+        weighted_ratings = scores.sort_values(ascending=False)
 
-# Compute BIM score only for query terms
-query_tokens = query[0].split()
-print("\nQuery tokens:", query_tokens)
+    recommended_books = weighted_ratings.index[:n]
+    return books[books['ISBN'].isin(recommended_books)][['Book-Title', 'Book-Author']]
 
-for term in query_tokens:
-    if term in tdm.columns:
-        n = tdm_bool[term].sum()  # Number of documents containing the term
-        s = tdm_bool.iloc[top_k_indices][term].sum()  # Number of relevant documents containing the term
-        # Apply BIM formula
-        numerator = (S + 0.5) / (S - s + 0.5)
-        denominator = (n - s + 0.5) / (N - S - n + s + 0.5)
-        bim_score = np.log(numerator / denominator)
-        bim_scores[term] = bim_score
+# HYBRID RECOMMENDATION
+def hybrid_recommendation(user_id, liked_book, n=5):
+    cb_books = content_based_recommendation(liked_book, n)
+    cf_books = collaborative_filtering(user_id, n)
 
-# Print BIM Scores for Query Terms
-print("\nBinary Independence Model (BIM) Scores for Query Terms:")
-for term, score in bim_scores.items():
-    print(f"{term}: {score:.4f}")
+    if cf_books.empty:
+        return cb_books
 
-# Calculate final scores for each document
-score_list = []
-for j in range(tdm_bool.shape[0]):
-    vec = tdm_bool.iloc[j]
-    score = 0
-    for term in query_tokens:
-        if term in bim_scores:
-            score += vec[term] * bim_scores[term]
-    score_list.append(score)
-print("\nFinal BIM scores:", score_list)
+    return pd.concat([cb_books, cf_books]).drop_duplicates().head(n)
+
+# TEST RECOMMENDATION SYSTEM
+user_id = '276733'
+book_title = 'Timeline'
+
+print("\n\n CONTENT-BASED (Books similar to '{}'):".format(book_title))
+print(content_based_recommendation(book_title))
+
+print("\n\n USER-BASED CF (Recommendations for user {}):".format(user_id))
+print(collaborative_filtering(user_id, method='user'))
+
+print("\n\n ITEM-BASED CF (Recommendations for user {}):".format(user_id))
+print(collaborative_filtering(user_id, method='item'))
+
+print("\n\n HYBRID (Recommendations for user {} who liked '{}'):".format(user_id, book_title))
+print(hybrid_recommendation(user_id, book_title))
+
+
+
+
+
+
+!pip install nltk
+import nltk
+nltk.download('punkt_tab') # changed line: download punkt_tab 
+import pandas as pd
+import matplotlib.pyplot as plt
+from nltk import word_tokenize
+from nltk.util import ngrams
+from collections import Counter
+import math
+
+# Load books dataset
+books = pd.read_csv('Books.csv', low_memory=False)
+
+# Combine 'Book-Title' and 'Book-Author' to form the corpus
+books['Text'] = books['Book-Title'].astype(str) + ' ' + books['Book-Author'].astype(str)
+corpus = ' '.join(books['Text'].tolist()).lower()
+tokens = word_tokenize(corpus)
+
+# 1. Zipf's Law: Frequency vs Rank
+def zipfs_law(tokens):
+    freq_dist = Counter(tokens)
+    sorted_freqs = sorted(freq_dist.values(), reverse=True)
+    ranks = list(range(1, len(sorted_freqs) + 1))
+
+    plt.figure(figsize=(8, 5))
+    plt.loglog(ranks, sorted_freqs)
+    plt.title("Zipf's Law")
+    plt.xlabel("Rank")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    plt.show()
+
+# 2. Heap's Law: Vocabulary size vs Corpus size
+def heaps_law(tokens):
+    vocab_sizes = []
+    token_counts = []
+
+    vocab = set()
+    for i, token in enumerate(tokens):
+        vocab.add(token)
+        if i % 100 == 0:
+            token_counts.append(i)
+            vocab_sizes.append(len(vocab))
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(token_counts, vocab_sizes)
+    plt.title("Heap's Law")
+    plt.xlabel("Total Tokens")
+    plt.ylabel("Vocabulary Size")
+    plt.grid(True)
+    plt.show()
+
+# 3.N-gram Model (Unsmoothed)
+def ngram_model(tokens, n=2):
+    ngram_counts = Counter(ngrams(tokens, n))
+    print(f"\nTop 10 {n}-grams:")
+    for ng, count in ngram_counts.most_common(10):
+        print(f"{' '.join(ng)}: {count}")
+
+    return ngram_counts
+
+# Run analyses
+zipfs_law(tokens)
+heaps_law(tokens)
+ngram_model(tokens, n=2)  # You can change n to 1 (unigram), 2 (bigram), etc.

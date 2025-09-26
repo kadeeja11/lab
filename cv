@@ -63,112 +63,6 @@ plt.show()
 
 
 
-
-FOURIER
-
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
-
-img1 = cv2.imread("VertStripe1.png", cv2.IMREAD_GRAYSCALE)
-img2 = cv2.imread("VerticalStripes.png", cv2.IMREAD_GRAYSCALE)
-
-if img1 is None:
-    print("Error: VertStripe1.png not found")
-elif img2 is None:
-    print("Error: VerticalStripes.png not found")
-else:
-    height, width = img1.shape
-    img2 = cv2.resize(img2, (width, height))
-
-    def fourier_analysis(img):
-        f = np.fft.fft2(img)
-        fshift = np.fft.fftshift(f)
-        magnitude = np.abs(fshift)
-        phase = np.angle(fshift)
-        amplitude = 20 * np.log(np.abs(fshift) + 1)
-        f_ishift = np.fft.ifftshift(fshift)
-        img_reconstructed = np.abs(np.fft.ifft2(f_ishift))
-        return f, fshift, magnitude, phase, amplitude, img_reconstructed
-
-    f1, fshift1, mag1, ph1, amp1, rec1 = fourier_analysis(img1)
-    f2, fshift2, mag2, ph2, amp2, rec2 = fourier_analysis(img2)
-    diff_mag = np.abs(mag1 - mag2)
-    diff_phase = np.abs(ph1 - ph2)
-
-    def show_images(images, titles, rows, cols, cmap='gray'):
-        plt.figure(figsize=(12, 6))
-        for i, (img, title) in enumerate(zip(images, titles), 1):
-            plt.subplot(rows, cols, i)
-            plt.imshow(img, cmap=cmap)
-            plt.title(title)
-            plt.axis('off')
-        plt.tight_layout()
-        plt.show()
-
-    show_images([img1, np.abs(f1), mag1, ph1, 20*np.log(np.abs(f1)+1), amp1],
-                ['Original Image1', 'Magnitude(No Shift)', 'Magnitude(Shift)', 'Phase Spectrum', 'Amplitude(No Shift)', 'Amplitude(Shift)'], 2, 3)
-
-    show_images([img2, np.abs(f2), mag2, ph2, 20*np.log(np.abs(f2)+1), amp2],
-                ['Original Image2', 'Magnitude(No Shift)', 'Magnitude(Shift)', 'Phase Spectrum', 'Amplitude(No Shift)', 'Amplitude(Shift)'], 2, 3)
-
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 3, 1), plt.imshow(diff_mag, cmap='hot'), plt.title("Magnitude Diff"), plt.colorbar(), plt.axis('off')
-    plt.subplot(1, 3, 2), plt.imshow(diff_phase, cmap='hot'), plt.title("Phase Diff"), plt.colorbar(), plt.axis('off')
-    plt.subplot(1, 3, 3)
-    plt.hist(mag1.flatten(), bins=50, alpha=0.7, label='Image1')
-    plt.hist(mag2.flatten(), bins=50, alpha=0.7, label='Image2')
-    plt.title('Magnitude Distribution')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    center_row, center_col = mag1.shape[0]//2, mag1.shape[1]//2
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(mag1[center_row, :], label='Image1')
-    plt.plot(mag2[center_row, :], label='Image2')
-    plt.title("Horizontal Center Line"), plt.legend()
-    plt.subplot(1, 2, 2)
-    plt.plot(mag1[:, center_col], label='Image1')
-    plt.plot(mag2[:, center_col], label='Image2')
-    plt.title("Vertical Center Line"), plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    def apply_filters(fshift, rows, cols):
-        crow, ccol = rows//2, cols//2
-        x, y = np.arange(cols)-ccol, np.arange(rows)-crow
-        X, Y = np.meshgrid(x, y)
-        d = np.sqrt(X**2 + Y**2)
-        cutoff = 0.1 * min(rows, cols)
-        mask_ideal = np.zeros((rows, cols), np.uint8)
-        cv2.circle(mask_ideal, (ccol, crow), int(cutoff/2), 1, -1)
-        mask_gaussian = np.exp(-(d**2)/(2*cutoff**2))
-        mask_butter = 1/(1+(d/cutoff)**(2*2))
-        mask_ideal_hp = 1 - mask_ideal
-        mask_gaussian_hp = 1 - mask_gaussian
-        mask_butter_hp = 1 - mask_butter
-        return {
-            "Ideal_LPF": (mask_ideal, fshift*mask_ideal),
-            "Gaussian_LPF": (mask_gaussian, fshift*mask_gaussian),
-            "Butter_LPF": (mask_butter, fshift*mask_butter),
-            "Ideal_HPF": (mask_ideal_hp, fshift*mask_ideal_hp),
-            "Gaussian_HPF": (mask_gaussian_hp, fshift*mask_gaussian_hp),
-            "Butter_HPF": (mask_butter_hp, fshift*mask_butter_hp)
-        }
-
-    filters = apply_filters(fshift1, height, width)
-
-    for name, (mask, filtered) in filters.items():
-        img_filtered = np.abs(np.fft.ifft2(np.fft.ifftshift(filtered)))
-        plt.figure(figsize=(6, 3))
-        plt.subplot(1, 2, 1), plt.imshow(mask, cmap='gray'), plt.title(f"{name} Mask"), plt.axis('off')
-        plt.subplot(1, 2, 2), plt.imshow(img_filtered, cmap='gray'), plt.title(f"{name} Image"), plt.axis('off')
-        plt.tight_layout()
-        plt.show()
-
-
 FILTERING
 
 import cv2
@@ -220,3 +114,225 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
+
+
+
+FOURIER
+
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+img = cv2.imread("VertStripe1.png", cv2.IMREAD_GRAYSCALE)
+
+height, width = img.shape
+
+def fourier_analysis(img):
+    f = np.fft.fft2(img)
+    fshift = np.fft.fftshift(f)
+    magnitude = np.abs(fshift)
+    phase = np.angle(fshift)
+    amplitude = 20 * np.log(np.abs(fshift) + 1)
+    f_ishift = np.fft.ifftshift(fshift)
+    img_reconstructed = np.abs(np.fft.ifft2(f_ishift))
+    return f, fshift, magnitude, phase, amplitude, img_reconstructed
+
+f, fshift, mag, ph, amp, rec = fourier_analysis(img)
+
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 3, 1), plt.imshow(img, cmap='gray'), plt.title("Original"), plt.axis('off')
+plt.subplot(2, 3, 2), plt.imshow(np.abs(f), cmap='gray'), plt.title("Magnitude(No Shift)"), plt.axis('off')
+plt.subplot(2, 3, 3), plt.imshow(mag, cmap='gray'), plt.title("Magnitude(Shift)"), plt.axis('off')
+plt.subplot(2, 3, 4), plt.imshow(ph, cmap='gray'), plt.title("Phase Spectrum"), plt.axis('off')
+plt.subplot(2, 3, 5), plt.imshow(20*np.log(np.abs(f)+1), cmap='gray'), plt.title("Amplitude(No Shift)"), plt.axis('off')
+plt.subplot(2, 3, 6), plt.imshow(amp, cmap='gray'), plt.title("Amplitude(Shift)"), plt.axis('off')
+plt.tight_layout()
+plt.show()
+
+center_row, center_col = mag.shape[0] // 2, mag.shape[1] // 2
+plt.figure(figsize=(10, 4))
+plt.subplot(1, 2, 1)
+plt.plot(mag[center_row, :])
+plt.title("Horizontal Center Line")
+plt.subplot(1, 2, 2)
+plt.plot(mag[:, center_col])
+plt.title("Vertical Center Line")
+plt.tight_layout()
+plt.show()
+
+def apply_filters(fshift, rows, cols):
+    crow, ccol = rows // 2, cols // 2
+    x, y = np.arange(cols)-ccol, np.arange(rows)-crow
+    X, Y = np.meshgrid(x, y)
+    d = np.sqrt(X**2 + Y**2)
+    cutoff = 0.1 * min(rows, cols)
+
+    mask_ideal = np.zeros((rows, cols), np.uint8)
+    cv2.circle(mask_ideal, (ccol, crow), int(cutoff / 2), 1, -1)
+    mask_gaussian = np.exp(-(d**2) / (2 * cutoff**2))
+    mask_butter = 1 / (1 + (d / cutoff)**(4))
+
+    mask_ideal_hp = 1 - mask_ideal
+    mask_gaussian_hp = 1 - mask_gaussian
+    mask_butter_hp = 1 - mask_butter
+
+    return {
+        "Ideal_LPF": (mask_ideal, fshift * mask_ideal),
+        "Gaussian_LPF": (mask_gaussian, fshift * mask_gaussian),
+        "Butter_LPF": (mask_butter, fshift * mask_butter),
+        "Ideal_HPF": (mask_ideal_hp, fshift * mask_ideal_hp),
+        "Gaussian_HPF": (mask_gaussian_hp, fshift * mask_gaussian_hp),
+        "Butter_HPF": (mask_butter_hp, fshift * mask_butter_hp)
+    }
+
+filters = apply_filters(fshift, height, width)
+
+for name, (mask, filtered) in filters.items():
+    img_filtered = np.abs(np.fft.ifft2(np.fft.ifftshift(filtered)))
+    plt.figure(figsize=(6, 3))
+    plt.subplot(1, 2, 1), plt.imshow(mask, cmap='gray'), plt.title(f"{name} Mask"), plt.axis('off')
+    plt.subplot(1, 2, 2), plt.imshow(img_filtered, cmap='gray'), plt.title(f"{name} Image"), plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+
+
+HISTOGRAM
+
+#Histogram given table
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Input intensity table (0-7)
+input_levels = np.arange(8)
+input_freq = np.array([80, 100, 90, 60, 30, 20, 10, 0])
+
+# Target intensity table (0-7)
+target_levels = np.arange(8)
+target_freq = np.array([0, 0, 0, 60, 80, 100, 80, 70])
+
+n = 8
+
+input_rk = input_levels
+input_nk = input_freq
+
+input_pdf = input_nk/np.sum(input_nk)
+
+input_cdf = np.cumsum(input_pdf)
+
+input_sk = input_cdf * (n-1)
+
+input_sk_rounded = np.round(input_sk, 0).astype(int)
+
+# Initialize new nk array
+new_input_nk = np.zeros_like(input_nk)
+
+# Find unique sk values
+unique_sk = np.unique(input_sk_rounded)
+
+# Assign summed nk to all positions with the same sk
+for i in unique_sk:
+    indices = np.where(input_sk_rounded == i)
+    new_input_nk[indices] = np.sum(input_nk[indices])
+
+print("rk", input_rk)
+print("nk", input_nk)
+print("pdf", input_pdf)
+print("cdf", input_cdf)
+print("Original sk:", input_sk_rounded)
+print("New nk:", new_input_nk)
+
+target_rk = target_levels
+target_nk = target_freq
+
+target_pdf = target_nk/np.sum(target_nk)
+
+target_cdf = np.cumsum(target_pdf)
+
+target_sk = target_cdf * (n-1)
+
+target_sk_rounded = np.round(target_sk, 0).astype(int)
+
+# Initialize new nk array
+new_target_nk = np.zeros_like(target_nk)
+
+# Find unique sk values
+unique_sk = np.unique(target_sk_rounded)
+
+# Assign summed nk to all positions with the same sk
+for i in unique_sk:
+    indices = np.where(target_sk_rounded == i)
+    new_target_nk[indices] = np.sum(target_nk[indices])
+
+print("rk", target_rk)
+print("nk", target_nk)
+print("pdf", target_pdf)
+print("cdf", target_cdf)
+print("Original sk:", target_sk_rounded)
+print("New nk:", new_target_nk)
+
+
+print("Input Levels: ", input_levels)
+print("Input Frequencies: ", input_freq)
+print("Target Levels: ", target_levels)
+print("Target Frequencies: ", target_freq)
+
+# Create mapping from input level to target level
+mapping = np.zeros(len(input_rk), dtype=int)
+
+for i, sk_val in enumerate(input_sk):
+    # Find target level whose CDF is closest to input CDF
+    diff = np.abs(sk_val - target_sk)
+    mapping[i] = target_rk[np.argmin(diff)]
+    
+mapped_nk = np.zeros_like(input_nk)
+
+# Find unique sk values
+unique_nk = np.unique(mapping)
+
+# Assign summed nk to all positions with the same sk
+for i in unique_nk:
+    indices = np.where(mapping == i)
+    mapped_nk[indices] = np.sum(input_nk[indices])
+
+print("Mapping (Input -> Output): ", mapping)
+print("Mapped Intensity values : ", mapped_nk)
+
+final_values = np.zeros_like(input_levels)
+
+j=0
+for i in mapping:
+    final_values[i] = mapped_nk[j]
+    j+=1
+
+plt.figure(figsize=(10,5))
+plt.bar(target_rk, target_nk, width=0.4, label="Target Histogram")
+plt.xlabel("Intensity Levels")
+plt.ylabel("Intensity Values")
+plt.title("Input and Target Histograms")
+plt.legend()
+plt.show()
+
+plt.figure(figsize=(10,5))
+plt.bar(target_rk, target_nk, width=0.4, label="Target Histogram")
+plt.xlabel("Intensity Levels")
+plt.ylabel("Intensity Values")
+plt.title("Input and Target Histograms")
+plt.legend()
+plt.show()
+
+
+plt.figure(figsize=(6,4))
+plt.stem(input_rk, mapping, basefmt=" ")
+plt.xlabel("Input Levels")
+plt.ylabel("Mapped Output Levels")
+plt.title("Histogram Specification Mapping")
+plt.show()
+
+
+plt.figure(figsize=(6,4))
+plt.stem(input_rk, final_values, basefmt=" ")
+plt.xlabel("Input Levels")
+plt.ylabel("Mapped Intensity Values")
+plt.title("Histogram Specification Mapping")
+plt.show()

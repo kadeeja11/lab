@@ -1,0 +1,346 @@
+GENERATING NOISE
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread("tree.jpg", cv2.IMREAD_GRAYSCALE)
+img = cv2.resize(img, (256, 256))
+img_float = img.astype(np.float32) / 255.0
+
+gaussian = img_float + np.random.normal(0, 0.5, img.shape)
+impulse = np.copy(img_float)
+prob = 0.3
+rnd = np.random.rand(*img.shape)
+impulse[rnd < (prob / 2)] = 0.0
+impulse[rnd > 1 - (prob / 2)] = 1.0
+poisson = np.random.poisson(img_float * 255.0) / 255.0
+exp_noise = np.random.exponential(0.1, img.shape)
+exponential = np.clip(img_float + exp_noise, 0, 1)
+gamma_noise = np.random.gamma(2.0, 0.1, img.shape)
+gamma = np.clip(img_float + gamma_noise, 0, 1)
+rayleigh_noise = np.random.rayleigh(0.1, img.shape)
+rayleigh = np.clip(img_float + rayleigh_noise, 0, 1)
+uniform_noise = np.random.uniform(-0.2, 0.2, img.shape)
+uniform = np.clip(img_float + uniform_noise, 0, 1)
+
+
+titles = ["Original","Gaussian","Impulse","Poisson","Exponential","Gamma","Rayleigh","Uniform"]
+images = [img_float,gaussian,impulse,poisson,exponential,gamma,rayleigh,uniform]
+
+for im,name in zip(images,titles):
+    cv2.imwrite(f"{name}.png",(im*255).astype(np.uint8))
+
+plt.figure(figsize=(14,12))
+for i in range(len(images)):
+    plt.subplot(4,4,i+1)
+    plt.imshow(images[i],cmap='gray')
+    plt.title(titles[i],fontsize=8)
+    plt.axis("off")
+plt.suptitle("Noise Models",fontsize=14)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(10,50))
+for i,(im,title) in enumerate(zip(images,titles)):
+    plt.subplot(len(images),2,2*i+1)
+    plt.imshow(im,cmap='gray')
+    plt.title(title)
+    plt.axis('off')
+    plt.subplot(len(images),2,2*i+2)
+    flat=(im*255).flatten()
+    plt.hist(flat,bins='auto',color='gray',alpha=0.7,density=True)
+    mean_val=np.mean(flat)
+    std_val=np.std(flat)
+    plt.axvline(mean_val,color='r',linestyle='--',linewidth=1,label=f"Mean={mean_val:.1f}")
+    plt.axvline(mean_val+std_val,color='b',linestyle='--',linewidth=1,label="+1σ")
+    plt.axvline(mean_val-std_val,color='b',linestyle='--',linewidth=1,label="-1σ")
+    plt.title(f"{title} histogram")
+    plt.xlabel("Pixel Intensity")
+    plt.ylabel("Probability Density")
+plt.tight_layout()
+plt.show()
+
+
+INDENTIFYING THE NOISE FROM A NOISY IMAGE
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+noisy_img = cv2.imread("salt_pepper_noise.png", cv2.IMREAD_GRAYSCALE).astype(np.float32)
+M, N = noisy_img.shape
+
+mean_val = np.mean(noisy_img)
+std_val = np.std(noisy_img)
+hist, bins = np.histogram(noisy_img.flatten(), bins=256, range=(0,255))
+skewness = ((np.mean((noisy_img - mean_val)**3)) / (std_val**3)) if std_val != 0 else 0
+
+print(f"Mean: {mean_val:.2f}, Std: {std_val:.2f}, Skewness: {skewness:.2f}")
+
+noise_type = "Unknown"
+if hist[0] > 0.01*M*N or hist[255] > 0.01*M*N:
+    noise_type = "Salt & Pepper"
+elif abs(skewness) < 0.5:
+    noise_type = "Gaussian"
+elif max(hist) - min(hist) < 0.05*M*N:
+    noise_type = "Uniform"
+elif abs(std_val**2 - mean_val) < 0.05*mean_val:
+    noise_type = "Poisson"
+
+print(f"Detected Noise Type: {noise_type}")
+
+def convolve2d(image, kernel):
+    m, n = kernel.shape
+    pad_h, pad_w = m//2, n//2
+    padded = np.pad(image, ((pad_h,pad_h),(pad_w,pad_w)), 'edge')
+    out = np.zeros_like(image)
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            region = padded[i:i+m, j:j+n]
+            out[i,j] = np.sum(region*kernel)
+    return out
+
+mean_kernel = np.ones((3,3),dtype=np.float32)/9.0
+weighted_kernel = np.array([[1,2,1],[2,4,2],[1,2,1]],dtype=np.float32)/16.0
+
+def median_filter(image, ksize=3):
+    pad = ksize//2
+    padded = np.pad(image, ((pad,pad),(pad,pad)), 'edge')
+    out = np.zeros_like(image)
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            region = padded[i:i+ksize,j:j+ksize]
+            out[i,j] = np.median(region)
+    return out
+
+if noise_type == "Gaussian":
+    denoised_img = convolve2d(noisy_img, weighted_kernel)
+elif noise_type == "Salt & Pepper":
+    denoised_img = median_filter(noisy_img,3)
+elif noise_type == "Uniform":
+    denoised_img = convolve2d(noisy_img, mean_kernel)
+elif noise_type == "Poisson":
+    denoised_img = convolve2d(noisy_img, mean_kernel)
+else:
+    denoised_img = noisy_img.copy()
+
+print(f"Denoised Image: Mean={np.mean(denoised_img):.2f}, Std={np.std(denoised_img):.2f}")
+
+plt.figure(figsize=(12,6))
+plt.subplot(1,3,1)
+plt.imshow(noisy_img, cmap='gray')
+plt.title("Noisy Image")
+plt.axis('off')
+
+plt.subplot(1,3,2)
+plt.imshow(denoised_img, cmap='gray')
+plt.title(f"Denoised ({noise_type})")
+plt.axis('off')
+
+plt.subplot(1,3,3)
+plt.hist(denoised_img.flatten(), bins=256, color='green', alpha=0.7)
+plt.title("Histogram After Filtering")
+
+plt.tight_layout()
+plt.show()
+
+
+
+FILTERING
+
+import cv2
+import numpy as np
+from scipy.stats import skew, kurtosis
+import matplotlib.pyplot as plt
+
+def mean_filter(img, ksize=3):
+    return cv2.blur(img, (ksize, ksize))
+
+def median_filter(img, ksize=3):
+    return cv2.medianBlur(img, ksize)
+
+def gaussian_filter(img, ksize=3, sigma=1.0):
+    return cv2.GaussianBlur(img, (ksize, ksize), sigma)
+
+def averaging_filter(img, ksize=3):
+    return cv2.blur(img, (ksize, ksize))
+
+def identify_noise(img_noisy, img_original):
+    noise = img_noisy.astype(np.float32) - img_original.astype(np.float32)
+    mean_val = np.mean(noise)
+    std_val = np.std(noise)
+    skew_val = skew(noise.flatten())
+    kurt_val = kurtosis(noise.flatten())
+    if np.max(noise) > 200 or np.min(noise) < -200:
+        return "Impulse"
+    hist, _ = np.histogram(noise.flatten(), bins=50)
+    flatness = np.std(hist)
+    if flatness < 20:
+        return "Uniform"
+    if std_val / np.mean(np.abs(img_original) + 1e-6) > 0.5:
+        return "Multiplicative"
+    if skew_val > 1:
+        return "Exponential" if mean_val <= 20 else "Gamma"
+    if std_val > 40 and np.abs(skew_val) < 0.5:
+        return "Colored"
+    if np.abs(np.var(noise) - np.mean(img_original)) < 10:
+        return "Poisson"
+    if abs(mean_val) < 5 and skew_val < 0.5:
+        return "Gaussian"
+    diffs = np.diff(np.unique(img_noisy))
+    if np.any(diffs > 1) and np.all(diffs % 16 == 0):
+        return "Quantization"
+    return "Additive"
+
+def best_filter_for_noise(noise_type):
+    mapping = {
+        "Gaussian": gaussian_filter,
+        "Impulse": median_filter,
+        "Poisson": mean_filter,
+        "Exponential": mean_filter,
+        "Gamma": mean_filter,
+        "Uniform": averaging_filter,
+        "White": gaussian_filter,
+        "Colored": mean_filter,
+        "Additive": mean_filter,
+        "Multiplicative": mean_filter,
+        "Quantization": mean_filter,
+        "Photon": mean_filter
+    }
+    return mapping.get(noise_type, mean_filter)
+
+def denoise_image(img_noisy, img_original):
+    noise_type = identify_noise(img_noisy, img_original)
+    print(f"Identified noise: {noise_type}")
+    filter_func = best_filter_for_noise(noise_type)
+    denoised = filter_func(img_noisy)
+    return denoised, noise_type
+
+if __name__ == "__main__":
+    img_original = cv2.imread("Original.png", cv2.IMREAD_GRAYSCALE)
+    img_noisy = cv2.imread("salt_pepper_noise.png", cv2.IMREAD_GRAYSCALE)
+    denoised, noise_type = denoise_image(img_noisy, img_original)
+    cv2.imwrite(f"denoised_{noise_type}.png", denoised)
+
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 3, 1)
+    plt.imshow(img_original, cmap="gray")
+    plt.title("Original")
+    plt.axis("off")
+    plt.subplot(1, 3, 2)
+    plt.imshow(img_noisy, cmap="gray")
+    plt.title(f"Noisy ({noise_type})")
+    plt.axis("off")
+    plt.subplot(1, 3, 3)
+    plt.imshow(denoised, cmap="gray")
+    plt.title("Denoised")
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+
+
+FOURIER
+
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+img1 = cv2.imread("VertStripe1.png", cv2.IMREAD_GRAYSCALE)
+img2 = cv2.imread("VerticalStripes.png", cv2.IMREAD_GRAYSCALE)
+
+if img1 is None:
+    print("Error: VertStripe1.png not found")
+elif img2 is None:
+    print("Error: VerticalStripes.png not found")
+else:
+    height, width = img1.shape
+    img2 = cv2.resize(img2, (width, height))
+
+    def fourier_analysis(img):
+        f = np.fft.fft2(img)
+        fshift = np.fft.fftshift(f)
+        magnitude = np.abs(fshift)
+        phase = np.angle(fshift)
+        amplitude = 20 * np.log(np.abs(fshift) + 1)
+        f_ishift = np.fft.ifftshift(fshift)
+        img_reconstructed = np.abs(np.fft.ifft2(f_ishift))
+        return f, fshift, magnitude, phase, amplitude, img_reconstructed
+        
+    f1, fshift1, mag1, ph1, amp1, rec1 = fourier_analysis(img1)
+    f2, fshift2, mag2, ph2, amp2, rec2 = fourier_analysis(img2)
+    diff_mag = np.abs(mag1 - mag2)
+    diff_phase = np.abs(ph1 - ph2)
+
+    def show_images(images, titles, rows, cols, cmap='gray'):
+        plt.figure(figsize=(12, 6))
+        for i, (img, title) in enumerate(zip(images, titles), 1):
+            plt.subplot(rows, cols, i)
+            plt.imshow(img, cmap=cmap)
+            plt.title(title)
+            plt.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+    show_images([img1, np.abs(f1), mag1, ph1, 20*np.log(np.abs(f1)+1), amp1],
+                ['Original Image1', 'Magnitude(No Shift)', 'Magnitude(Shift)', 'Phase Spectrum', 'Amplitude(No Shift)', 'Amplitude(Shift)'], 2, 3)
+
+    show_images([img2, np.abs(f2), mag2, ph2, 20*np.log(np.abs(f2)+1), amp2],
+                ['Original Image2', 'Magnitude(No Shift)', 'Magnitude(Shift)', 'Phase Spectrum', 'Amplitude(No Shift)', 'Amplitude(Shift)'], 2, 3)
+
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 3, 1), plt.imshow(diff_mag, cmap='hot'), plt.title("Magnitude Diff"), plt.colorbar(), plt.axis('off')
+    plt.subplot(1, 3, 2), plt.imshow(diff_phase, cmap='hot'), plt.title("Phase Diff"), plt.colorbar(), plt.axis('off')
+    plt.subplot(1, 3, 3)
+    plt.hist(mag1.flatten(), bins=50, alpha=0.7, label='Image1')
+    plt.hist(mag2.flatten(), bins=50, alpha=0.7, label='Image2')
+    plt.title('Magnitude Distribution')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    center_row, center_col = mag1.shape[0]//2, mag1.shape[1]//2
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(mag1[center_row, :], label='Image1')
+    plt.plot(mag2[center_row, :], label='Image2')
+    plt.title("Horizontal Center Line"), plt.legend()
+    plt.subplot(1, 2, 2)
+    plt.plot(mag1[:, center_col], label='Image1')
+    plt.plot(mag2[:, center_col], label='Image2')
+    plt.title("Vertical Center Line"), plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    def apply_filters(fshift, rows, cols):
+        crow, ccol = rows//2, cols//2
+        x, y = np.arange(cols)-ccol, np.arange(rows)-crow
+        X, Y = np.meshgrid(x, y)
+        d = np.sqrt(X**2 + Y**2)
+        cutoff = 0.1 * min(rows, cols)
+        mask_ideal = np.zeros((rows, cols), np.uint8)
+        cv2.circle(mask_ideal, (ccol, crow), int(cutoff/2), 1, -1)
+        mask_gaussian = np.exp(-(d**2)/(2*cutoff**2))
+        mask_butter = 1/(1+(d/cutoff)**(2*2))
+        mask_ideal_hp = 1 - mask_ideal
+        mask_gaussian_hp = 1 - mask_gaussian
+        mask_butter_hp = 1 - mask_butter
+        return {
+            "Ideal_LPF": (mask_ideal, fshift*mask_ideal),
+            "Gaussian_LPF": (mask_gaussian, fshift*mask_gaussian),
+            "Butter_LPF": (mask_butter, fshift*mask_butter),
+            "Ideal_HPF": (mask_ideal_hp, fshift*mask_ideal_hp),
+            "Gaussian_HPF": (mask_gaussian_hp, fshift*mask_gaussian_hp),
+            "Butter_HPF": (mask_butter_hp, fshift*mask_butter_hp)
+        }
+
+    filters = apply_filters(fshift1, height, width)
+
+    for name, (mask, filtered) in filters.items():
+        img_filtered = np.abs(np.fft.ifft2(np.fft.ifftshift(filtered)))
+        plt.figure(figsize=(6, 3))
+        plt.subplot(1, 2, 1), plt.imshow(mask, cmap='gray'), plt.title(f"{name} Mask"), plt.axis('off')
+        plt.subplot(1, 2, 2), plt.imshow(img_filtered, cmap='gray'), plt.title(f"{name} Image"), plt.axis('off')
+        plt.tight_layout()
+        plt.show()

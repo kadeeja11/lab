@@ -1,0 +1,362 @@
+#INPUT IS CSV
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+
+# ==============================
+# 1. Load and preprocess data
+# ==============================
+df = pd.read_csv("image_data_with_labels.csv")
+X = df.drop("label", axis=1).values.astype("float32")
+y = df["label"].values
+
+# Normalize pixels
+X = X / 255.0
+
+# One-hot encode labels
+lb = LabelBinarizer()
+y = lb.fit_transform(y)
+
+# Reshape to (N, H, W, 1)
+img_size = int(np.sqrt(X.shape[1]))
+X = X.reshape(-1, img_size, img_size, 1)
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Convert to tensors
+X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
+y_train = tf.convert_to_tensor(y_train, dtype=tf.float32)
+X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
+y_test = tf.convert_to_tensor(y_test, dtype=tf.float32)
+
+# ==============================
+# 2. Initialize weights
+# ==============================
+num_classes = y.shape[1]
+
+# Convolution filter: 3x3, 1 input channel, 8 filters
+W1 = tf.Variable(tf.random.normal([3, 3, 1, 8], stddev=0.1))
+# Fully connected weights: after pooling, flatten → FC
+fc_input_dim = (img_size//4) * (img_size//4) * 8
+W2 = tf.Variable(tf.random.normal([fc_input_dim, num_classes], stddev=0.1))
+b2 = tf.Variable(tf.zeros([num_classes]))
+
+# ==============================
+# 3. Forward pass
+# ==============================
+def forward_pass(x):
+    # --- Convolution ---
+    conv = tf.nn.conv2d(x, W1, strides=1, padding="SAME")
+    
+    # --- ReLU Activation ---
+    relu = tf.nn.relu(conv)
+    
+    # --- Max Pooling (2x2) ---
+    pool1 = tf.nn.max_pool(relu, ksize=2, strides=2, padding="SAME")
+    pool2 = tf.nn.max_pool(pool1, ksize=2, strides=2, padding="SAME")  # 2 layers pooling
+    
+    # --- Flatten ---
+    flat = tf.reshape(pool2, [x.shape[0], -1])
+    
+    # --- Fully Connected Layer ---
+    logits = tf.matmul(flat, W2) + b2
+    
+    # --- Softmax for classification ---
+    output = tf.nn.softmax(logits)
+    
+    return output, logits
+
+# ==============================
+# 4. Loss & Training
+# ==============================
+def loss_fn(y_true, logits):
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=logits))
+
+optimizer = tf.optimizers.Adam(learning_rate=0.01)
+
+# ==============================
+# 5. Training Loop
+# ==============================
+epochs = 20
+batch_size = 32
+
+for epoch in range(epochs):
+    # Batch training
+    for i in range(0, X_train.shape[0], batch_size):
+        x_batch = X_train[i:i+batch_size]
+        y_batch = y_train[i:i+batch_size]
+
+        with tf.GradientTape() as tape:
+            y_pred, logits = forward_pass(x_batch)
+            loss = loss_fn(y_batch, logits)
+        
+        grads = tape.gradient(loss, [W1, W2, b2])
+        optimizer.apply_gradients(zip(grads, [W1, W2, b2]))
+
+    # Compute accuracy
+    y_pred_train, _ = forward_pass(X_train)
+    acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_train, 1), tf.argmax(y_train, 1)), tf.float32))
+    print(f"Epoch {epoch+1}/{epochs} - Loss: {loss.numpy():.4f} - Acc: {acc.numpy()*100:.2f}%")
+
+# ==============================
+# 6. Evaluation on Test Set
+# ==============================
+y_pred_test, _ = forward_pass(X_test)
+test_acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_test, 1), tf.argmax(y_test, 1)), tf.float32))
+print(f"\nTest Accuracy: {test_acc.numpy()*100:.2f}%")
+
+
+
+
+
+
+#INPUT IS IMAGE, CONVERT TO CSV
+import cv2
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+
+# ==============================
+# 1. Load Image and Convert to CSV
+# ==============================
+image_path = "houses.jpg"   # <-- replace with any image
+img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)  # grayscale
+
+# Resize for testing (e.g., 64x64)
+img = cv2.resize(img, (64, 64))  
+
+# Convert to CSV
+csv_filename = "image.csv"
+pd.DataFrame(img).to_csv(csv_filename, header=False, index=False)
+print(f"Image saved as CSV with shape {img.shape}")
+
+# ==============================
+# 2. Load CSV Back for CNN
+# ==============================
+df = pd.read_csv(csv_filename, header=None)
+X = df.values.astype("float32")
+
+# Flatten image for dataset simulation (multiple samples)
+# Here we duplicate the same image with random labels for demo
+X = np.tile(X.flatten(), (100, 1))   # 100 samples
+labels = np.random.choice(["cat", "dog"], size=100)  # Fake labels for demo
+
+# Normalize pixels
+X = X / 255.0
+
+# One-hot encode labels
+lb = LabelBinarizer()
+y = lb.fit_transform(labels)
+
+# Reshape to (N, H, W, 1)
+img_size = img.shape[0]
+X = X.reshape(-1, img_size, img_size, 1)
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Convert to tensors
+X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
+y_train = tf.convert_to_tensor(y_train, dtype=tf.float32)
+X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
+y_test = tf.convert_to_tensor(y_test, dtype=tf.float32)
+
+# ==============================
+# 3. Initialize Weights
+# ==============================
+num_classes = y.shape[1]
+
+# Convolution filter: 3x3, 1 input channel, 8 filters
+W1 = tf.Variable(tf.random.normal([3, 3, 1, 8], stddev=0.1))
+# Fully connected weights
+fc_input_dim = (img_size//4) * (img_size//4) * 8
+W2 = tf.Variable(tf.random.normal([fc_input_dim, num_classes], stddev=0.1))
+b2 = tf.Variable(tf.zeros([num_classes]))
+
+# ==============================
+# 4. Forward Pass (Manual CNN)
+# ==============================
+def forward_pass(x):
+    # Convolution
+    conv = tf.nn.conv2d(x, W1, strides=1, padding="SAME")
+    # ReLU
+    relu = tf.nn.relu(conv)
+    # Max Pooling twice
+    pool1 = tf.nn.max_pool(relu, ksize=2, strides=2, padding="SAME")
+    pool2 = tf.nn.max_pool(pool1, ksize=2, strides=2, padding="SAME")
+    # Flatten
+    flat = tf.reshape(pool2, [x.shape[0], -1])
+    # Fully connected + softmax
+    logits = tf.matmul(flat, W2) + b2
+    out = tf.nn.softmax(logits)
+    return out, logits
+
+# ==============================
+# 5. Loss & Optimizer
+# ==============================
+def loss_fn(y_true, logits):
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=logits))
+
+optimizer = tf.optimizers.Adam(learning_rate=0.01)
+
+# ==============================
+# 6. Training Loop
+# ==============================
+epochs = 10
+batch_size = 16
+
+for epoch in range(epochs):
+    for i in range(0, X_train.shape[0], batch_size):
+        x_batch = X_train[i:i+batch_size]
+        y_batch = y_train[i:i+batch_size]
+
+        with tf.GradientTape() as tape:
+            y_pred, logits = forward_pass(x_batch)
+            loss = loss_fn(y_batch, logits)
+
+        grads = tape.gradient(loss, [W1, W2, b2])
+        optimizer.apply_gradients(zip(grads, [W1, W2, b2]))
+
+    # Training accuracy
+    y_pred_train, _ = forward_pass(X_train)
+    acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_train, 1), tf.argmax(y_train, 1)), tf.float32))
+    print(f"Epoch {epoch+1}/{epochs} - Loss: {loss.numpy():.4f} - Acc: {acc.numpy()*100:.2f}%")
+
+# ==============================
+# 7. Evaluate on Test Data
+# ==============================
+y_pred_test, _ = forward_pass(X_test)
+test_acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_test, 1), tf.argmax(y_test, 1)), tf.float32))
+print(f"\nTest Accuracy: {test_acc.numpy()*100:.2f}%")
+
+
+
+
+
+#INPUT IS MULTIPLE IMAGES
+import cv2
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import os
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+
+# ==============================
+# 1. Convert Multiple Images to CSV
+# ==============================
+image_folder = "images/"  # <-- put all images here
+img_size = 64  # resize all images to 64x64 for consistency
+data = []
+labels = []
+
+# Iterate through all images in folder
+for filename in os.listdir(image_folder):
+    if filename.endswith((".jpg", ".png", ".jpeg")):
+        label = filename.split("_")[0]   # e.g., "cat_1.jpg" → label = "cat"
+        img_path = os.path.join(image_folder, filename)
+        
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        img = cv2.resize(img, (img_size, img_size))
+        
+        data.append(img.flatten())  # Flatten image pixels
+        labels.append(label)
+
+# Save to CSV
+df = pd.DataFrame(data)
+df["label"] = labels
+csv_filename = "multi_image_dataset.csv"
+df.to_csv(csv_filename, index=False)
+print(f"Dataset saved to {csv_filename} with {len(data)} images.")
+
+# ==============================
+# 2. Load CSV Dataset
+# ==============================
+df = pd.read_csv(csv_filename)
+X = df.drop("label", axis=1).values.astype("float32")
+y = df["label"].values
+
+# Normalize pixels 0-255 → 0-1
+X = X / 255.0
+
+# One-hot encode labels
+lb = LabelBinarizer()
+y = lb.fit_transform(y)
+
+# Reshape X to (N, H, W, 1)
+X = X.reshape(-1, img_size, img_size, 1)
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Convert to tensors
+X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
+y_train = tf.convert_to_tensor(y_train, dtype=tf.float32)
+X_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
+y_test = tf.convert_to_tensor(y_test, dtype=tf.float32)
+
+# ==============================
+# 3. Initialize Weights
+# ==============================
+num_classes = y.shape[1]
+
+W1 = tf.Variable(tf.random.normal([3, 3, 1, 8], stddev=0.1))
+fc_input_dim = (img_size // 4) * (img_size // 4) * 8
+W2 = tf.Variable(tf.random.normal([fc_input_dim, num_classes], stddev=0.1))
+b2 = tf.Variable(tf.zeros([num_classes]))
+
+# ==============================
+# 4. Forward Pass (Manual CNN)
+# ==============================
+def forward_pass(x):
+    conv = tf.nn.conv2d(x, W1, strides=1, padding="SAME")
+    relu = tf.nn.relu(conv)
+    pool1 = tf.nn.max_pool(relu, ksize=2, strides=2, padding="SAME")
+    pool2 = tf.nn.max_pool(pool1, ksize=2, strides=2, padding="SAME")
+    flat = tf.reshape(pool2, [x.shape[0], -1])
+    logits = tf.matmul(flat, W2) + b2
+    out = tf.nn.softmax(logits)
+    return out, logits
+
+# ==============================
+# 5. Loss & Optimizer
+# ==============================
+def loss_fn(y_true, logits):
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=logits))
+
+optimizer = tf.optimizers.Adam(learning_rate=0.01)
+
+# ==============================
+# 6. Training Loop
+# ==============================
+epochs = 10
+batch_size = 8
+
+for epoch in range(epochs):
+    for i in range(0, X_train.shape[0], batch_size):
+        x_batch = X_train[i:i+batch_size]
+        y_batch = y_train[i:i+batch_size]
+        
+        with tf.GradientTape() as tape:
+            y_pred, logits = forward_pass(x_batch)
+            loss = loss_fn(y_batch, logits)
+        
+        grads = tape.gradient(loss, [W1, W2, b2])
+        optimizer.apply_gradients(zip(grads, [W1, W2, b2]))
+    
+    # Training accuracy
+    y_pred_train, _ = forward_pass(X_train)
+    acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_train, 1), tf.argmax(y_train, 1)), tf.float32))
+    print(f"Epoch {epoch+1}/{epochs} - Loss: {loss.numpy():.4f} - Accuracy: {acc.numpy()*100:.2f}%")
+
+# ==============================
+# 7. Evaluation on Test Data
+# ==============================
+y_pred_test, _ = forward_pass(X_test)
+test_acc = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(y_pred_test, 1), tf.argmax(y_test, 1)), tf.float32))
+print(f"\nTest Accuracy: {test_acc.numpy()*100:.2f}%")

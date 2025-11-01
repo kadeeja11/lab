@@ -1,0 +1,732 @@
+# -----------------------
+# Morphological operations
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread("parrot.jpeg", cv2.IMREAD_GRAYSCALE)
+binary = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+
+erode = cv2.erode(binary, kernel)
+dilate = cv2.dilate(binary, kernel)
+opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+kh = np.array([[0,1,0],[1,1,1],[0,1,0]], dtype=np.uint8)
+km = np.array([[1,0,1],[0,0,0],[1,0,1]], dtype=np.uint8)
+hitmiss = cv2.morphologyEx(binary, cv2.MORPH_HITMISS, kh)
+
+plt.figure(figsize=(15, 10))
+
+plt.subplot(2, 4, 1)
+plt.imshow(binary, cmap='gray')
+plt.title('Original Binary')
+plt.axis('off')
+
+plt.subplot(2, 4, 2)
+plt.imshow(erode, cmap='gray')
+plt.title('Erosion\nShrink objects, remove noise')
+plt.axis('off')
+
+plt.subplot(2, 4, 3)
+plt.imshow(dilate, cmap='gray')
+plt.title('Dilation\nExpand objects, fill gaps')
+plt.axis('off')
+
+plt.subplot(2, 4, 4)
+plt.imshow(opening, cmap='gray')
+plt.title('Opening\nRemove small noise, preserve shape')
+plt.axis('off')
+
+plt.subplot(2, 4, 5)
+plt.imshow(closing, cmap='gray')
+plt.title('Closing\nFill small holes, connect objects')
+plt.axis('off')
+
+plt.subplot(2, 4, 6)
+plt.imshow(hitmiss, cmap='gray')
+plt.title('Hit-or-Miss\nDetect specific patterns')
+plt.axis('off')
+
+plt.subplot(2, 4, 7)
+plt.imshow(kh, cmap='gray')
+plt.title('Hit Kernel')
+plt.axis('off')
+
+plt.subplot(2, 4, 8)
+plt.imshow(km, cmap='gray')
+plt.title('Miss Kernel')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# --
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = plt.imread("parrot.jpeg")
+if len(img.shape) == 3:
+    img = np.dot(img[...,:3], [0.299, 0.587, 0.114])
+img = (img * 255).astype(np.uint8)
+
+height, width = img.shape
+binary = np.zeros((height, width), dtype=np.uint8)
+
+for i in range(height):
+    for j in range(width):
+        if img[i,j] > 128:
+            binary[i,j] = 255
+
+def manual_erode(img):
+    result = np.zeros((height, width), dtype=np.uint8)
+    for i in range(1, height-1):
+        for j in range(1, width-1):
+            if (img[i-1,j-1] == 255 and img[i-1,j] == 255 and img[i-1,j+1] == 255 and
+                img[i,j-1] == 255 and img[i,j] == 255 and img[i,j+1] == 255 and
+                img[i+1,j-1] == 255 and img[i+1,j] == 255 and img[i+1,j+1] == 255):
+                result[i,j] = 255
+    return result
+
+def manual_dilate(img):
+    result = np.zeros((height, width), dtype=np.uint8)
+    for i in range(1, height-1):
+        for j in range(1, width-1):
+            if (img[i-1,j-1] == 255 or img[i-1,j] == 255 or img[i-1,j+1] == 255 or
+                img[i,j-1] == 255 or img[i,j] == 255 or img[i,j+1] == 255 or
+                img[i+1,j-1] == 255 or img[i+1,j] == 255 or img[i+1,j+1] == 255):
+                result[i,j] = 255
+    return result
+
+def manual_opening(img):
+    eroded = manual_erode(img)
+    return manual_dilate(eroded)
+
+def manual_closing(img):
+    dilated = manual_dilate(img)
+    return manual_erode(dilated)
+
+def manual_hitmiss(img):
+    result = np.zeros((height, width), dtype=np.uint8)
+    kh = np.array([[0,1,0],[1,1,1],[0,1,0]])
+    km = np.array([[1,0,1],[0,0,0],[1,0,1]])
+    
+    for i in range(1, height-1):
+        for j in range(1, width-1):
+            hit = True
+            miss = True
+            
+            for di in range(3):
+                for dj in range(3):
+                    if kh[di,dj] == 1:
+                        if img[i-1+di,j-1+dj] != 255:
+                            hit = False
+                    if km[di,dj] == 1:
+                        if img[i-1+di,j-1+dj] != 0:
+                            miss = False
+            
+            if hit and miss:
+                result[i,j] = 255
+    return result
+
+erode = manual_erode(binary)
+dilate = manual_dilate(binary)
+opening = manual_opening(binary)
+closing = manual_closing(binary)
+hitmiss = manual_hitmiss(binary)
+
+plt.figure(figsize=(15, 10))
+
+plt.subplot(2, 4, 1)
+plt.imshow(binary, cmap='gray')
+plt.title('Original Binary')
+plt.axis('off')
+
+plt.subplot(2, 4, 2)
+plt.imshow(erode, cmap='gray')
+plt.title('Erosion\nShrink objects, remove noise')
+plt.axis('off')
+
+plt.subplot(2, 4, 3)
+plt.imshow(dilate, cmap='gray')
+plt.title('Dilation\nExpand objects, fill gaps')
+plt.axis('off')
+
+plt.subplot(2, 4, 4)
+plt.imshow(opening, cmap='gray')
+plt.title('Opening\nRemove small noise, preserve shape')
+plt.axis('off')
+
+plt.subplot(2, 4, 5)
+plt.imshow(closing, cmap='gray')
+plt.title('Closing\nFill small holes, connect objects')
+plt.axis('off')
+
+plt.subplot(2, 4, 6)
+plt.imshow(hitmiss, cmap='gray')
+plt.title('Hit-or-Miss\nDetect specific patterns')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+#--
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = plt.imread("parrot.jpeg")
+if len(img.shape) == 3:
+    img = np.dot(img[...,:3], [0.299, 0.587, 0.114])
+img = (img * 255).astype(np.uint8)
+
+height, width = img.shape
+binary = np.zeros((height, width), dtype=np.uint8)
+
+for i in range(height):
+    for j in range(width):
+        if img[i,j] > 128:
+            binary[i,j] = 255
+
+def convolution(img, kernel):
+    kh, kw = kernel.shape
+    ph, pw = (kh-1)//2, (kw-1)//2
+    result = np.zeros((height, width), dtype=np.uint8)
+    
+    for i in range(ph, height-ph):
+        for j in range(pw, width-pw):
+            has_white = False
+            for di in range(kh):
+                for dj in range(kw):
+                    if kernel[di, dj] == 1 and img[i-ph+di, j-pw+dj] == 255:
+                        has_white = True
+                        break
+                if has_white:
+                    break
+            result[i,j] = 255 if has_white else 0
+    return result
+
+def convolution_erode(img, kernel):
+    kh, kw = kernel.shape
+    ph, pw = (kh-1)//2, (kw-1)//2
+    result = np.zeros((height, width), dtype=np.uint8)
+    
+    for i in range(ph, height-ph):
+        for j in range(pw, width-pw):
+            all_white = True
+            for di in range(kh):
+                for dj in range(kw):
+                    if kernel[di, dj] == 1 and img[i-ph+di, j-pw+dj] != 255:
+                        all_white = False
+                        break
+                if not all_white:
+                    break
+            result[i,j] = 255 if all_white else 0
+    return result
+
+def convolution_hitmiss(img, khit, kmiss):
+    kh, kw = khit.shape
+    ph, pw = (kh-1)//2, (kw-1)//2
+    result = np.zeros((height, width), dtype=np.uint8)
+    
+    for i in range(ph, height-ph):
+        for j in range(pw, width-pw):
+            hit_match = True
+            miss_match = True
+            
+            for di in range(kh):
+                for dj in range(kw):
+                    if khit[di, dj] == 1 and img[i-ph+di, j-pw+dj] != 255:
+                        hit_match = False
+                    if kmiss[di, dj] == 1 and img[i-ph+di, j-pw+dj] != 0:
+                        miss_match = False
+            
+            if hit_match and miss_match:
+                result[i,j] = 255
+    return result
+
+kernel_3x3 = np.ones((3,3), dtype=np.uint8)
+kernel_hit = np.array([[0,1,0],[1,1,1],[0,1,0]], dtype=np.uint8)
+kernel_miss = np.array([[1,0,1],[0,0,0],[1,0,1]], dtype=np.uint8)
+
+erode_conv = convolution_erode(binary, kernel_3x3)
+dilate_conv = convolution(binary, kernel_3x3)
+opening_conv = convolution(dilate_conv, kernel_3x3)
+closing_conv = convolution_erode(dilate_conv, kernel_3x3)
+hitmiss_conv = convolution_hitmiss(binary, kernel_hit, kernel_miss)
+
+plt.figure(figsize=(15, 10))
+
+plt.subplot(2, 5, 1)
+plt.imshow(binary, cmap='gray')
+plt.title('Original Binary')
+plt.axis('off')
+
+plt.subplot(2, 5, 2)
+plt.imshow(erode_conv, cmap='gray')
+plt.title('Erosion (Conv)\nShrink objects, remove noise')
+plt.axis('off')
+
+plt.subplot(2, 5, 3)
+plt.imshow(dilate_conv, cmap='gray')
+plt.title('Dilation (Conv)\nExpand objects, fill gaps')
+plt.axis('off')
+
+plt.subplot(2, 5, 4)
+plt.imshow(opening_conv, cmap='gray')
+plt.title('Opening (Conv)\nRemove small noise, preserve shape')
+plt.axis('off')
+
+plt.subplot(2, 5, 5)
+plt.imshow(closing_conv, cmap='gray')
+plt.title('Closing (Conv)\nFill small holes, connect objects')
+plt.axis('off')
+
+plt.subplot(2, 5, 6)
+plt.imshow(hitmiss_conv, cmap='gray')
+plt.title('Hit-or-Miss (Conv)\nDetect specific patterns')
+plt.axis('off')
+
+plt.subplot(2, 5, 7)
+plt.imshow(kernel_3x3, cmap='gray')
+plt.title('3x3 Kernel\nAll Ones')
+plt.axis('off')
+
+plt.subplot(2, 5, 8)
+plt.imshow(kernel_hit, cmap='gray')
+plt.title('Hit Kernel\nCross Pattern')
+plt.axis('off')
+
+plt.subplot(2, 5, 9)
+plt.imshow(kernel_miss, cmap='gray')
+plt.title('Miss Kernel\nInverted Cross')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+#-----------------------------
+# ORB, SIFT, FAST
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+image_path = "parrot.jpeg"
+img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+if img is None:
+    print(f"Error: Could not read image from {image_path}")
+
+gray = img.copy()
+
+img_orb = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+img_sift = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+img_fast = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+# 1. ORB Feature Detection
+print("Detecting ORB features...")
+orb = cv2.ORB_create(nfeatures=1000)
+keypoints_orb, descriptors_orb = orb.detectAndCompute(gray, None)
+img_orb = cv2.drawKeypoints(img_orb, keypoints_orb, None, color=(0, 255, 0), flags=0)
+
+# 2. SIFT Feature Detection
+print("Detecting SIFT features...")
+try:
+    sift = cv2.SIFT_create()
+    keypoints_sift, descriptors_sift = sift.detectAndCompute(gray, None)
+    img_sift = cv2.drawKeypoints(img_sift, keypoints_sift, None, color=(255, 0, 0), flags=0)
+except Exception as e:
+    print(f"SIFT not available: {e}")
+    keypoints_sift = []
+    img_sift = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+# 3. FAST Feature Detection
+print("Detecting FAST features...")
+fast = cv2.FastFeatureDetector_create()
+keypoints_fast = fast.detect(gray, None)
+img_fast = cv2.drawKeypoints(img_fast, keypoints_fast, None, color=(0, 0, 255), flags=0)
+
+# Print results
+print(f"ORB features detected: {len(keypoints_orb)}")
+print(f"SIFT features detected: {len(keypoints_sift)}")
+print(f"FAST features detected: {len(keypoints_fast)}")
+
+# Display results
+plt.figure(figsize=(15, 10))
+
+plt.subplot(2, 2, 1)
+plt.imshow(gray, cmap='gray')
+plt.title('Original Image (Grayscale)')
+plt.axis('off')
+
+plt.subplot(2, 2, 2)
+plt.imshow(cv2.cvtColor(img_orb, cv2.COLOR_BGR2RGB))
+plt.title(f'ORB Features: {len(keypoints_orb)}')
+plt.axis('off')
+
+plt.subplot(2, 2, 3)
+plt.imshow(cv2.cvtColor(img_sift, cv2.COLOR_BGR2RGB))
+plt.title(f'SIFT Features: {len(keypoints_sift)}')
+plt.axis('off')
+
+plt.subplot(2, 2, 4)
+plt.imshow(cv2.cvtColor(img_fast, cv2.COLOR_BGR2RGB))
+plt.title(f'FAST Features: {len(keypoints_fast)}')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+#---------------------------
+# Region-Based Segmentation
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+image = cv2.imread('parrot.jpeg', cv2.IMREAD_GRAYSCALE)
+
+# Apply thresholding to create binary image
+_, binary = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY)
+
+# Find connected components
+num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
+
+output = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+for i in range(1, num_labels):
+    output[labels == i] = np.random.randint(0, 255, size=3)  # Assign random color to each region
+
+plt.figure(figsize=(10, 5))
+plt.subplot(121), plt.axis('off'), plt.imshow(image, cmap='gray'), plt.title('Original')
+plt.subplot(122), plt.axis('off'), plt.imshow(output), plt.title('Region-Based Segmentation')
+plt.show()
+
+#---------------------------
+# Watershed Segmentation
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+image = cv2.imread('parrot.jpeg', cv2.IMREAD_GRAYSCALE)
+
+_, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+kernel = np.ones((3, 3), np.uint8)
+opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)
+
+sure_bg = cv2.dilate(opening, kernel, iterations=3)
+
+dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+_, sure_fg = cv2.threshold(dist_transform, 0.7 * dist_transform.max(), 255, 0)
+
+
+sure_fg = np.uint8(sure_fg)
+unknown = cv2.subtract(sure_bg, sure_fg)
+
+_, markers = cv2.connectedComponents(sure_fg)
+markers = markers + 1
+markers[unknown == 255] = 0
+
+image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+markers = cv2.watershed(image_rgb, markers)
+image_rgb[markers == -1] = [255, 0, 0]
+
+
+plt.figure(figsize=(10, 5))
+plt.subplot(121), plt.imshow(image, cmap='gray'), plt.title('Original')
+plt.subplot(122), plt.imshow(image_rgb), plt.title('Watershed Segmentation')
+plt.show()
+
+
+#-----------------------------------------
+#---------------------------------------
+#arithmetic operations
+# import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Read two images
+img1 = cv2.imread('image.jpeg')
+img2 = cv2.imread('image2.jpeg')
+
+if img1 is None or img2 is None:
+    print("Error: Could not load one or both images")
+
+img1_rgb = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
+img2_rgb = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
+
+print(f"Image 1 shape: {img1.shape}")
+print(f"Image 2 shape: {img2.shape}")
+
+img2_resized = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+img2_resized_rgb = cv2.cvtColor(img2_resized, cv2.COLOR_BGR2RGB)
+
+print(f"Resized Image 2 shape: {img2_resized.shape}")
+
+img1_float = img1.astype(np.float32)
+img2_resized_float = img2_resized.astype(np.float32)
+
+addition = cv2.add(img1, img2_resized)
+subtraction = cv2.subtract(img1, img2_resized)
+multiplication = cv2.multiply(img1_float, img2_resized_float / 255.0).astype(np.uint8)
+division = cv2.divide(img1_float, img2_resized_float + 0.001)  # Avoid division by zero
+division = np.clip(division, 0, 255).astype(np.uint8)
+
+# Perform bitwise operations
+bitwise_and = cv2.bitwise_and(img1, img2_resized)
+bitwise_or = cv2.bitwise_or(img1, img2_resized)
+bitwise_xor = cv2.bitwise_xor(img1, img2_resized)
+
+# Convert all results to RGB for display
+addition_rgb = cv2.cvtColor(addition, cv2.COLOR_BGR2RGB)
+subtraction_rgb = cv2.cvtColor(subtraction, cv2.COLOR_BGR2RGB)
+multiplication_rgb = cv2.cvtColor(multiplication, cv2.COLOR_BGR2RGB)
+division_rgb = cv2.cvtColor(division, cv2.COLOR_BGR2RGB)
+bitwise_and_rgb = cv2.cvtColor(bitwise_and, cv2.COLOR_BGR2RGB)
+bitwise_or_rgb = cv2.cvtColor(bitwise_or, cv2.COLOR_BGR2RGB)
+bitwise_xor_rgb = cv2.cvtColor(bitwise_xor, cv2.COLOR_BGR2RGB)
+
+# Display all images
+plt.figure(figsize=(20, 15))
+
+# Original images
+plt.subplot(3, 4, 1)
+plt.imshow(img1_rgb)
+plt.title('Image 1 (Original)')
+plt.axis('off')
+
+plt.subplot(3, 4, 2)
+plt.imshow(img2_resized_rgb)
+plt.title('Image 2 (Original)')
+plt.axis('off')
+
+# Arithmetic operations
+plt.subplot(3, 4, 5)
+plt.imshow(addition_rgb)
+plt.title('Addition')
+plt.axis('off')
+
+plt.subplot(3, 4, 6)
+plt.imshow(subtraction_rgb)
+plt.title('Subtraction')
+plt.axis('off')
+
+plt.subplot(3, 4, 7)
+plt.imshow(multiplication_rgb)
+plt.title('Multiplication')
+plt.axis('off')
+
+plt.subplot(3, 4, 8)
+plt.imshow(division_rgb)
+plt.title('Division')
+plt.axis('off')
+
+# Bitwise operations
+plt.subplot(3, 4, 9)
+plt.imshow(bitwise_and_rgb)
+plt.title('Bitwise AND')
+plt.axis('off')
+
+plt.subplot(3, 4, 10)
+plt.imshow(bitwise_or_rgb)
+plt.title('Bitwise OR')
+plt.axis('off')
+
+plt.subplot(3, 4, 11)
+plt.imshow(bitwise_xor_rgb)
+plt.title('Bitwise XOR')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# AND & OR
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+
+
+image = cv2.imread('image.jpeg', cv2.IMREAD_GRAYSCALE)
+
+
+height, width = image.shape[:2]
+
+
+display(plt.imshow(image, cmap='gray', vmin=0, vmax=255))
+plt.axis('off')
+plt.show()
+
+
+# mask value
+mask_value =0b10000000
+
+
+for i in range(image.shape[0]):
+   for j in range(image.shape[1]):
+       image[i,j] = image[i,j] & mask_value
+
+
+display(plt.imshow(image, cmap='gray', vmin=0, vmax=255))
+plt.axis('off')
+plt.show()
+
+
+image = cv2.imread('image.jpeg', cv2.IMREAD_GRAYSCALE)
+
+
+height, width = image.shape[:2]
+
+
+display(plt.imshow(image, cmap='gray', vmin=0, vmax=255))
+plt.axis('off')
+plt.show()
+
+
+for i in range(image.shape[0]):
+   for j in range(image.shape[1]):
+       image[i,j] = image[i,j] | mask_value
+
+
+display(plt.imshow(image, cmap='gray', vmin=0, vmax=255))
+plt.axis('off')
+plt.show()
+
+#--------
+# Filters
+
+import cv2
+import numpy as np
+from scipy.ndimage import maximum_filter, minimum_filter
+
+def mean_filter(img, ksize=3):
+  result = np.zeros_like(img)
+
+  for i in range(img.shape[0]):
+    for j in range(img.shape[1]):
+      region = img[i:i + ksize, j:j + ksize]
+      result[i, j] = np.mean(region)
+
+  return result
+
+def median_filter(img, ksize=3):
+  result = np.zeros_like(img)
+
+  for i in range(img.shape[0]):
+    for j in range(img.shape[1]):
+      region = img[i:i + ksize, j:j + ksize]
+      result[i, j] = np.median(region)
+
+  return result
+
+def harmonic_filter(img, ksize=3):
+    result = np.zeros_like(img, dtype=np.float32)
+    epsilon = 1e-6
+
+    for i in range(img.shape[0] - ksize + 1):
+        for j in range(img.shape[1] - ksize + 1):
+            region = img[i:i + ksize, j:j + ksize].astype(np.float32)
+            harmonic_val = (ksize * ksize) / np.sum(1.0 / (region + epsilon))
+            result[i, j] = harmonic_val
+
+    return np.clip(result, 0, 255).astype(img.dtype)
+
+def laplacian_filter(img):
+    kernel = np.array([[0, 1, 0],
+                       [1, -4, 1],
+                       [0, 1, 0]], dtype=np.float32)
+    
+    result = np.zeros_like(img, dtype=np.float32)
+    
+    for i in range(1, img.shape[0] - 1):
+        for j in range(1, img.shape[1] - 1):
+            region = img[i-1:i+2, j-1:j+2].astype(np.float32)
+            laplacian_val = np.sum(region * kernel)
+            result[i, j] = laplacian_val
+    
+    return result
+
+def gaussian_filter(img, ksize=3, sigma=1.0):
+  return cv2.GaussianBlur(img, (ksize, ksize), sigma)
+
+def averaging_filter(img, ksize=3):
+  return cv2.blur(img, (ksize, ksize))
+
+
+def midpoint(img):
+  maxf = maximum_filter(img, (3, 3))
+  minf = minimum_filter(img, (3, 3))
+  midpoint = (maxf + minf) / 2
+
+  return midpoint
+
+img = cv2.imread("tree.jpg", cv2.IMREAD_GRAYSCALE)
+
+noisy_titles = ["Gaussian", "Impulse", "Poisson", "Exponential", "Gamma", "Rayleigh", "Uniform",
+                "White", "Colored", "Additive", "Multiplicative", "Quantization", "Photon"]
+
+noisy_images = []
+
+for i in noisy_titles:
+  img = cv2.imread(f"{i}.png", cv2.IMREAD_GRAYSCALE)
+  noisy_images.append(img)
+
+for i in range(len(noisy_titles)):
+  result = mean_filter(noisy_images[i])
+
+  plt.figure(figsize=(8, 4))
+
+  plt.subplot(1, 2, 1)
+  plt.imshow(noisy_images[i], cmap="gray")
+  plt.title(f"{noisy_titles[i]} noise")
+  plt.axis("off")
+
+  plt.subplot(1, 2, 2)
+  plt.imshow(result, cmap="gray")
+  plt.title("Mean Filtered Image")
+  plt.axis("off")
+
+  plt.tight_layout()
+  plt.show()
+
+
+
+#-------------------------------------
+# Noises
+#------------------------------------
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def add_gaussian_noise(image, mean=0, var=20):
+    sigma = np.sqrt(var)
+    noise = np.random.normal(mean, sigma, image.shape)
+    noisy = image + noise
+    return np.clip(noisy, 0, 255).astype(np.uint8), noise
+
+def add_impulse_noise(image, prob=0.02):
+    noisy = image.copy()
+    noise = np.zeros_like(image, dtype=np.float32)
+    rnd = np.random.rand(*image.shape[:2])
+    noisy[rnd < prob/2] = 0
+    noisy[rnd > 1 - prob/2] = 255
+    noise[(rnd < prob/2) | (rnd > 1 - prob/2)] = 255
+    return noisy, noise
+
+def add_poisson_noise(image):
+    vals = len(np.unique(image))
+    vals = 2 ** np.ceil(np.log2(vals))
+    noisy = np.random.poisson(image * vals) / float(vals)
+    noise = noisy - image
+    return np.clip(noisy, 0, 255).astype(np.uint8), noise
+
+def add_exponential_noise(image, scale=30.0):
+    noise = np.random.exponential(scale, image.shape)
+    noisy = image + noise
+    return np.clip(noisy, 0, 255).astype(np.uint8), noise
+
+def add_gamma_nois
